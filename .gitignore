@@ -38,3 +38,4 @@ models/
 *.bin
 *.safetensors
 *.gguf
+reports/
