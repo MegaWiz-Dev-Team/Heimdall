@@ -9,6 +9,8 @@
 | 🏥 | Medical domain |
 | 🖼️ | Vision / Multimodal |
 | ⚡ | MoE (fast inference) |
+| 🔍 | Embedding model |
+| 🎯 | Reranking model |
 
 ---
 
@@ -126,7 +128,114 @@ mlx_lm.convert \
 
 ---
 
-## 7. ⚡ RAM Planning Guide
+## 7. 🔍 Embedding Models
+
+> ใช้สำหรับ semantic search, RAG, similarity matching
+> ใช้ RAM น้อยมาก (<1 GB) — รันพร้อม LLM ได้สบาย
+
+### MLX-Native (ใช้ `mlx-embedding-models` หรือ `mlx-embeddings`)
+
+| Model | Dim | Size | Lang | Notes |
+|:--|:--|:--|:--|:--|
+| ⭐🔍 `nomic-ai/nomic-embed-text-v1.5` | 768 | ~270 MB | EN | ดีที่สุดในรุ่นเล็ก, Matryoshka support |
+| 🔍 `BAAI/bge-large-en-v1.5` | 1024 | ~330 MB | EN | ⭐ Top-tier ค้นหาแม่นยำ |
+| 🔍 `BAAI/bge-m3` | 1024 | ~570 MB | 100+ | ⭐ Multilingual (รวม Thai), dense+sparse |
+| 🔍 `Alibaba-NLP/gte-large-en-v1.5` | 1024 | ~330 MB | EN | แม่นยำดี, competitive กับ bge |
+| 🔍 `jinaai/jina-embeddings-v3` | 1024 | ~570 MB | 100+ | Multilingual, Matryoshka, task-type control |
+| 🔍 `jinaai/jina-embeddings-v2-base-en` | 768 | ~270 MB | EN | 8K context window, เร็ว |
+| 🔍 `sentence-transformers/all-MiniLM-L6-v2` | 384 | ~80 MB | EN | จิ๋ว เร็วมาก, prototype ดี |
+| 🔍 `sentence-transformers/all-mpnet-base-v2` | 768 | ~420 MB | EN | สมดุลขนาด/คุณภาพ |
+| 🔍 `intfloat/multilingual-e5-large` | 1024 | ~560 MB | 100+ | Multilingual ดี, รวม Thai |
+| 🔍 `mixedbread-ai/mxbai-embed-large-v1` | 1024 | ~330 MB | EN | State-of-the-art ตัวใหม่ |
+
+### วิธีใช้ Embedding บน MLX
+
+```bash
+pip install mlx-embedding-models
+
+python3 -c "
+from mlx_embedding_models.embedding import EmbeddingModel
+model = EmbeddingModel.from_registry('bge-m3')
+embeds = model.encode(['สวัสดีครับ', 'Hello world'])
+print(f'Shape: {embeds.shape}')  # (2, 1024)
+"
+```
+
+### วิธีใช้ผ่าน sentence-transformers (CPU/MPS)
+
+```bash
+pip install sentence-transformers
+
+python3 -c "
+from sentence_transformers import SentenceTransformer
+model = SentenceTransformer('BAAI/bge-m3', device='mps')
+embeds = model.encode(['สวัสดีครับ', 'Hello world'])
+print(f'Shape: {embeds.shape}')  # (2, 1024)
+"
+```
+
+---
+
+## 8. 🎯 Reranking Models
+
+> ใช้สำหรับ rerank ผลลัพธ์จาก search ให้แม่นยำขึ้น (2-stage retrieval)
+> เบา (<1 GB) — ใช้ร่วมกับ embedding model + LLM ได้
+
+### MLX-Native
+
+| Model | Size | Lang | Notes |
+|:--|:--|:--|:--|
+| ⭐🎯 `mlx-community/mxbai-rerank-large-v2` | ~1.3 GB | Multi | MixedBread v2 — SOTA, fast, multilingual |
+| 🎯 `jinaai/jina-reranker-v3-mlx` | ~600 MB | 100+ | MLX-native port, listwise reranker |
+| 🎯 `jinaai/jina-reranker-v2-base-multilingual` | ~280 MB | 100+ | เบา, multilingual, code-aware |
+
+### ใช้ผ่าน sentence-transformers (CPU/MPS)
+
+| Model | Size | Lang | Notes |
+|:--|:--|:--|:--|
+| ⭐🎯 `BAAI/bge-reranker-v2-m3` | ~570 MB | 100+ | ⭐ แม่นยำดีที่สุด, multilingual |
+| 🎯 `BAAI/bge-reranker-v2-gemma` | ~2.5 GB | Multi | Gemma-based, accuracy สูง |
+| 🎯 `cross-encoder/ms-marco-MiniLM-L-6-v2` | ~80 MB | EN | จิ๋ว เร็วมาก, classic |
+| 🎯 `cross-encoder/ms-marco-MiniLM-L-12-v2` | ~130 MB | EN | แม่นยำกว่า L-6 |
+| 🎯 `mixedbread-ai/mxbai-rerank-base-v2` | ~450 MB | Multi | Base version, เบากว่า large |
+
+### วิธีใช้ Reranker
+
+```bash
+pip install sentence-transformers
+
+python3 -c "
+from sentence_transformers import CrossEncoder
+model = CrossEncoder('BAAI/bge-reranker-v2-m3', device='mps')
+
+query = 'What is diabetes?'
+docs = [
+    'Diabetes is a chronic metabolic disease.',
+    'The weather today is sunny.',
+    'Type 2 diabetes affects insulin resistance.',
+]
+
+scores = model.predict([(query, doc) for doc in docs])
+ranked = sorted(zip(docs, scores), key=lambda x: x[1], reverse=True)
+for doc, score in ranked:
+    print(f'{score:.3f} | {doc}')
+"
+```
+
+### 🔗 Pipeline ตัวอย่าง: Embedding → Rerank → LLM
+
+```
+Query → [Embedding Model] → search top-50 docs
+      → [Reranker] → rerank → top-5 docs
+      → [LLM (Heimdall)] → generate answer with context
+```
+
+> 💡 ทั้ง embedding + reranker ใช้ RAM รวมกันแค่ ~1-2 GB
+> สามารถรันพร้อม Qwen3.5-35B (20 GB) ได้สบาย → ยังเหลือ ~26 GB สำหรับ KV cache
+
+---
+
+## 9. ⚡ RAM Planning Guide
 
 | Available RAM | Model ที่แนะนำ | KV Cache เหลือ |
 |:--|:--|:--|
@@ -135,6 +244,7 @@ mlx_lm.convert \
 | ใช้ ~8 GB | Gemma-3-12B, Llama-8B → **~40 GB** cache | ดีมาก |
 | ใช้ ~18 GB | Qwen-Coder-32B → **~30 GB** cache | ดี |
 | ⭐ ใช้ ~20 GB | **Qwen3.5-35B MoE** → **~28 GB** cache | สมดุลดีที่สุด |
+| ใช้ ~22 GB | Qwen3.5-35B + embedding + reranker → **~26 GB** | ยังดี |
 | ใช้ ~40 GB | Llama-70B → **~8 GB** cache | จำกัด concurrency |
 | ใช้ ~60 GB | Qwen3.5-122B MoE → **~0 GB** cache | ⚠️ อาจ swap |
 
