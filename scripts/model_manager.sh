@@ -156,7 +156,9 @@ cmd_status() {
     # Disk
     echo ""
     echo "💿 Disk Usage:"
-    df -h "$INTERNAL_DIR" 2>/dev/null | tail -1 | awk '{printf "   Internal: %s used / %s total (%s free)\n", $3, $2, $4}'
+    local internal_df_path="$INTERNAL_DIR"
+    [ ! -d "$internal_df_path" ] && internal_df_path="$HOME"
+    df -h "$internal_df_path" 2>/dev/null | tail -1 | awk '{printf "   Internal: %s used / %s total (%s free)\n", $3, $2, $4}'
     if [ -n "$EXTERNAL_DIR" ] && [ -d "$EXTERNAL_DIR" ]; then
         df -h "$EXTERNAL_DIR" 2>/dev/null | tail -1 | awk '{printf "   External: %s used / %s total (%s free)\n", $3, $2, $4}'
     fi
