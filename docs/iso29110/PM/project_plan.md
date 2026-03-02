@@ -98,20 +98,22 @@
 
 ---
 
-### ⬜ Sprint 3 — Go Live (เป้าหมาย: 2026-03-04 ~ 06)
+### ✅ Sprint 3 — Go Live (2026-03-03) `DONE`
 
 > เป้าหมาย: Start server จริง + benchmark บน hardware จริง
 
-| ID | Task | Priority | Est. |
+| ID | Task | Status | Notes |
 |:--|:--|:--|:--|
-| WBS-012 | Download model + start vllm-mlx + Heimdall gateway | 🔴 HIGH | 1 hr |
-| WBS-011a | Integration test: gateway → vllm-mlx (chat completion) | 🔴 HIGH | 2 hr |
-| WBS-011b | Integration test: SSE streaming through gateway | 🔴 HIGH | 1 hr |
-| WBS-011c | API smoke tests: /v1/models, /v1/chat/completions | 🟡 MED | 1 hr |
-| WBS-011d | LAN connectivity test (from another machine) | 🟡 MED | 30 min |
-| WBS-012b | Run real benchmark (--all models) | 🟡 MED | 2 hr |
+| WBS-012 | Download model + start server | ✅ | Qwen3.5-27B-4bit on mlx_vlm.server |
+| WBS-011a | Integration test: chat completion | ✅ | Non-stream + content verified |
+| WBS-011b | Integration test: SSE streaming | ✅ | 7 chunks + [DONE] |
+| WBS-011c | API smoke tests (models, chat, metrics) | ✅ | ST-001~004 all pass |
+| WBS-011d | LAN connectivity test | ⬜ | Moved to Sprint 4 |
+| WBS-012b | Run real benchmark | ⬜ | Moved to Sprint 4 |
 
-**Definition of Done**: Server running, API responds, benchmark report generated from real hardware
+**Results**: 6/6 integration tests pass, 9/9 unit tests pass
+**Model**: Qwen3.5-27B-4bit — 16.4 TPS, 16.2 GB peak RAM
+**RISK-001**: vllm-metal broken → mlx_vlm.server fallback activated
 
 ---
 
@@ -167,7 +169,7 @@
 | **Sprint 0** | 1 day | Foundation + Architecture | ✅ Done |
 | **Sprint 1** | 1 day | Gateway MVP | ✅ Done |
 | **Sprint 2** | 1 day | Multi-Model + Tooling | ✅ Done |
-| **Sprint 3** | 3 days | Go Live + Real Benchmark | ⬜ Next |
+| **Sprint 3** | 1 day | Go Live + Integration Tests | ✅ Done |
 | **Sprint 4** | 3 days | SQLite Persistence | ⬜ Planned |
 | **Sprint 5** | 3 days | Multi-Type Benchmark | ⬜ Planned |
 | **Sprint 6** | 3 days | Polish + Release v0.2.0 | ⬜ Planned |
@@ -178,7 +180,7 @@
 
 | ID | Risk | Impact | Probability | Mitigation |
 |:--|:--|:--|:--|:--|
-| RISK-001 | vllm-mlx experimental → bugs | Medium | Medium | Fallback to mlx_lm.server |
+| RISK-001 | vllm-mlx experimental → bugs | Medium | **Triggered** | ✅ Mitigated: mlx_vlm.server fallback activated |
 | RISK-003 | RAM ไม่พอสำหรับ model ใหญ่ | High | Low | ใช้ MoE 4-bit (~20GB) → เหลือ ~28GB สำหรับ KV cache |
 | RISK-005 | Docker/K3s ไม่ได้ Metal GPU | Medium | — | ✅ Mitigated: ตัดสินใจใช้ bare-metal |
 | RISK-006 | External SSD ถอดระหว่าง inference | High | Low | model_manager.sh ย้าย active model ไป internal ก่อน serve |
@@ -190,6 +192,6 @@
 | M1: Planning Complete | S0 | 2026-03-02 | ✅ Done | Project plan, Requirements, Design |
 | M2: Gateway MVP | S1 | 2026-03-02 | ✅ Done | Rust gateway, scripts, 9 tests |
 | M3: Benchmark Suite | S2 | 2026-03-03 | ✅ Done | Multi-model benchmark + HTML report |
-| M4: Production Ready | S3 | 2026-03-06 | ⬜ | Running server, real benchmarks |
+| M4: Server Running | S3 | 2026-03-03 | ✅ Done | Qwen3.5-27B, 6/6 tests, 16.4 TPS |
 | M5: Data Persistence | S4 | 2026-03-09 | ⬜ | SQLite + history CLI |
 | M6: Release v0.2.0 | S6 | 2026-03-16 | ⬜ | Full release, docs, tagged |

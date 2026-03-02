@@ -25,14 +25,15 @@
 │  Heimdall Gateway (Rust/Axum)              :3000         │
 │  ┌──────────┬──────────┬──────────┬──────────┐          │
 │  │ Auth     │ Proxy    │ Health   │ Metrics  │          │
-│  │ (Bearer) │ (SSE)    │ Check    │(Prometheus│          │
+│  │ (Bearer) │(/v1→/)   │ Check    │(Prometheus│          │
 │  └──────────┴────┬─────┴──────────┴──────────┘          │
-│                  │                                       │
+│                  │ strips /v1 prefix                     │
 │                  ▼                                       │
 │  ┌──────────────────────────┐                           │
-│  │ vllm-mlx      :8000     │                           │
-│  │ Qwen3.5-35B-A3B-4bit    │                           │
-│  │ (Metal GPU, ~20GB)      │                           │
+│  │ mlx_vlm.server  :8000   │  ← multimodal (Qwen3.5)   │
+│  │ mlx_lm.server   :8000   │  ← text-only (Qwen3)      │
+│  │ Qwen3.5-27B-4bit        │  (auto-detect in start.sh) │
+│  │ (Metal GPU, ~16.2 GB)   │                           │
 │  └──────────────────────────┘                           │
 │                                                          │
 │  Mac Mini M4 Pro — 64GB Unified Memory                  │
