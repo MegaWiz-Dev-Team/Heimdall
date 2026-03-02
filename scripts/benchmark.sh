@@ -105,7 +105,7 @@ run_single_request() {
             \"stream\": false
         }" 2>/dev/null)
 
-    local body=$(echo "$response" | head -n -1)
+    local body=$(echo "$response" | sed '$d')
     local timings=$(echo "$response" | tail -1)
     local ttfb=$(echo "$timings" | cut -d'|' -f1)
     local total=$(echo "$timings" | cut -d'|' -f2)
@@ -114,7 +114,8 @@ run_single_request() {
 import sys, json
 try:
     data = json.load(sys.stdin)
-    print(data.get('usage', {}).get('completion_tokens', 0))
+    u = data.get('usage', {})
+    print(u.get('completion_tokens', u.get('output_tokens', 0)))
 except: print(0)
 " 2>/dev/null)
 
@@ -122,7 +123,8 @@ except: print(0)
 import sys, json
 try:
     data = json.load(sys.stdin)
-    print(data.get('usage', {}).get('prompt_tokens', 0))
+    u = data.get('usage', {})
+    print(u.get('prompt_tokens', u.get('input_tokens', 0)))
 except: print(0)
 " 2>/dev/null)
 
