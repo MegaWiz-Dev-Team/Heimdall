@@ -70,7 +70,7 @@ done
 # --- Start Rust Gateway ---
 echo ""
 echo "2️⃣  Starting Rust gateway..."
-GATEWAY_BIN="$PROJECT_DIR/gateway/target/release/llm-gateway"
+GATEWAY_BIN="$PROJECT_DIR/gateway/target/release/heimdall-gateway"
 if [ ! -f "$GATEWAY_BIN" ]; then
     echo "   Gateway not built. Building..."
     (cd "$PROJECT_DIR/gateway" && source "$HOME/.cargo/env" && cargo build --release 2>&1 | tail -1)
@@ -84,7 +84,7 @@ echo "   PID: $(cat "$PIDS_DIR/gateway.pid") — Log: logs/gateway.log"
 sleep 1
 
 echo ""
-echo "✅ LLM Server started!"
+echo "✅ Heimdall started!"
 echo ""
 echo "Usage:"
 echo "  curl http://localhost:$GATEWAY_PORT/health"
