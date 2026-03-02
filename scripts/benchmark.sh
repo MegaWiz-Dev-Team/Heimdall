@@ -111,7 +111,7 @@ except: print(0)
 
 echo ""
 echo "╔══════════════════════════════════════════╗"
-echo "║     🏎️  LLM Server Benchmark Suite      ║"
+echo "║   🛡️  Heimdall Benchmark Suite           ║"
 echo "╚══════════════════════════════════════════╝"
 echo ""
 echo "  Version: v${VERSION} (${GIT_COMMIT})"

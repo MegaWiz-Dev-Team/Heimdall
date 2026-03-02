@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 PIDS_DIR="$PROJECT_DIR/.pids"
 
-echo "🛑 Stopping LLM Server"
+echo "🛑 Stopping Heimdall"
 echo "======================"
 
 # --- Stop Gateway ---

@@ -1,16 +1,18 @@
-# Mega LLM Server
+# Heimdall 🛡️
 
-> Internal LLM API Server on Mac Mini M4 Pro 64GB — vllm-mlx + Rust Gateway
+> *ผู้พิทักษ์แห่ง LLM realm* — Internal LLM API Server on Mac Mini M4 Pro 64GB
+
+**Heimdall** (เฮมดัลล์) เป็นเทพผู้พิทักษ์สะพาน Bifrost ในตำนานนอร์ส มองเห็นได้ไกลถึงขอบจักรวาล ได้ยินแม้หญ้างอก — เช่นเดียวกับ gateway นี้ที่เฝ้าดูทุก request ที่ผ่านเข้ามา
 
 ## Architecture
 
 ```
-Clients (LAN)  →  Rust Gateway (:3000)  →  vllm-mlx (:8000)
-                  ├── API Key Auth            └── Qwen3.5-35B-A3B
-                  ├── Rate Limiting                (MLX, 4-bit, MoE)
-                  ├── Health Check
-                  ├── Metrics (/metrics)
-                  └── SSE Streaming Proxy
+Clients (LAN)  →  Heimdall Gateway (:3000)  →  vllm-mlx (:8000)
+                  ├── 🔑 API Key Auth              └── Qwen3.5-35B-A3B
+                  ├── 🛡️ Rate Limiting                  (MLX, 4-bit, MoE)
+                  ├── 💚 Health Check
+                  ├── 📊 Metrics (/metrics)
+                  └── 🌊 SSE Streaming Proxy
 ```
 
 ## Quick Start
@@ -24,6 +26,9 @@ Clients (LAN)  →  Rust Gateway (:3000)  →  vllm-mlx (:8000)
 
 # 3. Check health
 ./scripts/health_check.sh
+
+# 4. Benchmark
+./scripts/benchmark.sh 3
 ```
 
 ## API Usage
@@ -42,7 +47,7 @@ curl http://localhost:3000/v1/chat/completions \
     "messages": [{"role": "user", "content": "Hello!"}]
   }'
 
-# With streaming
+# Streaming
 curl http://localhost:3000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
@@ -52,7 +57,7 @@ curl http://localhost:3000/v1/chat/completions \
   }'
 ```
 
-### With API Key (if configured)
+### With API Key
 
 ```bash
 curl http://localhost:3000/v1/models \
@@ -76,24 +81,34 @@ response = client.chat.completions.create(
 print(response.choices[0].message.content)
 ```
 
+## Scripts
+
+| Script | Command | Description |
+|:--|:--|:--|
+| Setup | `./scripts/setup.sh` | Install dependencies + build |
+| Start | `./scripts/start.sh` | Launch vllm-mlx + Heimdall |
+| Stop | `./scripts/stop.sh` | Graceful shutdown |
+| Health | `./scripts/health_check.sh` | Check status |
+| Benchmark | `./scripts/benchmark.sh 5` | Run benchmarks + HTML report |
+| Version | `./scripts/version.sh show` | SemVer management |
+
 ## Configuration
 
 Copy `.env.example` to `.env` and edit:
 
 | Variable | Default | Description |
 |:--|:--|:--|
-| `BACKEND_PORT` | `8000` | vllm-mlx listen port |
-| `GATEWAY_PORT` | `3000` | Gateway listen port |
-| `LLM_MODEL` | `mlx-community/Qwen3.5-35B-A3B-Instruct-4bit` | Default model |
-| `API_KEYS` | *(empty)* | Comma-separated API keys (empty = no auth) |
+| `BACKEND_PORT` | `8000` | vllm-mlx port |
+| `GATEWAY_PORT` | `3000` | Heimdall Gateway port |
+| `LLM_MODEL` | `Qwen3.5-35B-A3B-Instruct-4bit` | Default model |
+| `API_KEYS` | *(empty)* | Comma-separated keys (empty = no auth) |
 | `HOST` | `0.0.0.0` | Bind address |
 
 ## Project Structure
 
 ```
-mega-llm-server/
+heimdall/
 ├── gateway/                    # Rust API Gateway (Axum)
-│   ├── Cargo.toml
 │   └── src/
 │       ├── main.rs             # Entry point
 │       ├── auth.rs             # API key authentication
@@ -101,16 +116,9 @@ mega-llm-server/
 │       ├── health.rs           # Health check endpoints
 │       ├── metrics_handler.rs  # Prometheus metrics
 │       └── proxy.rs            # Reverse proxy + SSE streaming
-├── scripts/
-│   ├── setup.sh                # One-time setup
-│   ├── start.sh                # Start all services
-│   ├── stop.sh                 # Stop all services
-│   └── health_check.sh         # Health check
-├── docs/
-│   ├── iso29110/               # ISO 29110 project documentation
-│   └── llm_mlx.md              # MLX model reference
-├── .agents/                    # Antigravity rules & workflows
-├── .env.example                # Config template
+├── scripts/                    # Operation & benchmark scripts
+├── docs/iso29110/              # ISO 29110 project documentation
+├── VERSION                     # SemVer (0.1.0)
 └── README.md
 ```
 

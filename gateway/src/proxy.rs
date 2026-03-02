@@ -141,7 +141,8 @@ pub fn routes() -> Router<AppState> {
             "/",
             get(|| async {
                 serde_json::json!({
-                    "name": "LLM Gateway",
+                    "name": "Heimdall",
+                    "description": "Guardian of the LLM realm",
                     "version": env!("CARGO_PKG_VERSION"),
                     "endpoints": {
                         "api": "/v1/",

@@ -1,8 +1,8 @@
 [package]
-name = "llm-gateway"
+name = "heimdall-gateway"
 version = "0.1.0"
 edition = "2021"
-description = "Rust API Gateway for LLM Server — proxies to vllm-mlx backend"
+description = "Heimdall — Guardian of the LLM realm. Rust API Gateway proxying to vllm-mlx."
 license = "MIT"
 
 [dependencies]

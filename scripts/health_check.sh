@@ -17,8 +17,8 @@ fi
 GATEWAY_PORT="${GATEWAY_PORT:-3000}"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
 
-echo "🏥 LLM Server Health Check"
-echo "=========================="
+echo "🏥 Heimdall Health Check"
+echo "========================"
 echo ""
 
 # --- Gateway ---

@@ -32,7 +32,7 @@ async fn main() {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "llm_gateway=info,tower_http=info".into()),
+                .unwrap_or_else(|_| "heimdall_gateway=info,tower_http=info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -40,7 +40,7 @@ async fn main() {
     // Load config
     let config = AppConfig::from_env();
     tracing::info!(
-        "LLM Gateway starting — backend: {}:{}",
+        "⚡ Heimdall starting — backend: {}:{}",
         config.backend_host,
         config.backend_port
     );
@@ -81,7 +81,7 @@ async fn main() {
         .await
         .expect("Failed to bind address");
 
-    tracing::info!("🚀 LLM Gateway listening on {}", addr);
+    tracing::info!("🛡️ Heimdall Gateway listening on {}", addr);
     tracing::info!(
         "   Proxying to http://{}:{}",
         config.backend_host,

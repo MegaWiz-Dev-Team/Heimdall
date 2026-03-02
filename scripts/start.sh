@@ -31,7 +31,7 @@ if [ -f "$PIDS_DIR/backend.pid" ] && kill -0 "$(cat "$PIDS_DIR/backend.pid")" 2>
     exit 1
 fi
 
-echo "🚀 Starting LLM Server"
+echo "🛡️ Starting Heimdall"
 echo "======================"
 echo ""
 echo "📦 Model: $LLM_MODEL"
