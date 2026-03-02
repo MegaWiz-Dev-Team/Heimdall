@@ -61,6 +61,7 @@
 | WBS-011 | Integration testing | ⬜ Not Started | — |
 | WBS-012 | Production deployment & benchmark | ⬜ Not Started | — |
 | WBS-013 | SQLite benchmark storage + history CLI | ⬜ Planned | REQ-025, REQ-026 |
+| WBS-014 | Model storage management (internal/external SSD) | 🟡 In Progress | REQ-027, REQ-028 |
 
 ## 6. Risks
 

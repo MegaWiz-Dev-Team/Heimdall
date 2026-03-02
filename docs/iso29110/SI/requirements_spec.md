@@ -47,6 +47,8 @@
 | REQ-024 | SHOULD | **SemVer versioning** system | ✅ VERSION + version.sh |
 | REQ-025 | SHOULD | เก็บผล benchmark ลง **SQLite** ทุกครั้งที่รัน | ⬜ Planned |
 | REQ-026 | SHOULD | **Benchmark history** CLI เปรียบเทียบผลข้าม version | ⬜ Planned |
+| REQ-027 | SHOULD | Model ที่ใช้งานเก็บ **internal SSD**, ไม่ใช้ย้ายไป **external SSD** | ⬜ Planned |
+| REQ-028 | SHOULD | **Model manager** script จัดการ archive/restore models | ⬜ Planned |
 
 ---
 
@@ -78,3 +80,5 @@
 | REQ-024 | VERSION, version.sh | — | ✅ Done |
 | REQ-025 | data/heimdall.db | — | ⬜ Planned |
 | REQ-026 | benchmark_history.sh | — | ⬜ Planned |
+| REQ-027 | .env (EXTERNAL_MODEL_DIR) | — | ⬜ Planned |
+| REQ-028 | model_manager.sh | — | ⬜ Planned |
