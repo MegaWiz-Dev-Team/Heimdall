@@ -5,70 +5,63 @@
 
 | Field | Value |
 |:--|:--|
-| **Document ID** | SI-TSR-001 |
-| **Version** | 1.0 |
+| **Document ID** | SI-TST-RPT-001 |
+| **Version** | 2.0 |
 | **Last Updated** | 2026-03-03 |
-| **Status** | ✅ 9/9 unit tests passing |
+| **Status** | ✅ Sprint 3 results added |
 
 ---
 
-## 2. Test Execution Summary
+## 2. Unit Tests — Gateway (Rust)
 
-| Test Category | Total | Passed | Failed | Skipped |
-|:--|:--|:--|:--|:--|
-| Unit Tests | 9 | 9 | 0 | 0 |
-| Integration Tests | 2 | 0 | 0 | 2 |
-| API Smoke Tests | 4 | 0 | 0 | 4 |
-| Benchmark Tests | 6 | 3 | 0 | 3 |
-| **Total** | **21** | **12** | **0** | **9** |
+**Run date**: 2026-03-03 | **Command**: `cargo test`
+
+| Test ID | Result | Notes |
+|:--|:--|:--|
+| UT-CFG-001 | ✅ Pass | Default config values |
+| UT-CFG-002 | ✅ Pass | API keys parsing |
+| UT-CFG-003 | ✅ Pass | Empty API keys |
+| UT-CFG-004 | ✅ Pass | Backend URL construction |
+| UT-AUTH-001 | ✅ Pass | No auth → pass all |
+| UT-AUTH-002 | ✅ Pass | Valid API key → pass |
+| UT-AUTH-003 | ✅ Pass | Invalid key → 401 |
+| UT-AUTH-004 | ✅ Pass | Missing header → 401 |
+| UT-AUTH-005 | ✅ Pass | Health bypasses auth |
+
+**Summary**: 9/9 passed, 0 failed
 
 ---
 
-## 3. Test Results Log
+## 3. Integration Tests — Sprint 3
 
-### Unit Tests — `cargo test` (2026-03-03)
+**Run date**: 2026-03-03 | **Command**: `./tests/integration_test.sh`
+**Backend**: mlx_lm.server (Qwen3-0.6B-4bit) | **Gateway**: Heimdall (port 3000)
 
-```
-running 9 tests
-test config::tests::test_default_config .............. ok
-test config::tests::test_api_keys_parsing ............ ok
-test config::tests::test_empty_api_keys .............. ok
-test config::tests::test_backend_url ................. ok
-test auth::tests::test_no_auth_configured_passes_all . ok
-test auth::tests::test_valid_api_key_passes .......... ok
-test auth::tests::test_invalid_api_key_rejected ...... ok
-test auth::tests::test_missing_auth_header_rejected .. ok
-test auth::tests::test_health_endpoint_bypasses_auth . ok
+| Test ID | Result | Notes |
+|:--|:--|:--|
+| ST-001 | ✅ Pass | GET /v1/models → 200 (model: Qwen3-0.6B-4bit) |
+| ST-002 / IT-001 | ✅ Pass | POST /v1/chat/completions non-stream → 200 + AI response |
+| ST-003 / IT-003 | ✅ Pass | POST /v1/chat/completions stream=true → 7 SSE chunks + [DONE] |
+| ST-004 | ✅ Pass | GET /metrics → 200 + Prometheus (proxy_requests_total) |
+| Health | ✅ Pass | GET /health → 200 |
+| Root | ✅ Pass | GET / → 200 + "Heimdall" |
 
-test result: ok. 9 passed; 0 failed
-```
-
-| Date | Test ID | Result | Notes |
-|:--|:--|:--|:--|
-| 2026-03-03 | UT-CFG-001 | ✅ Pass | test_default_config |
-| 2026-03-03 | UT-CFG-002 | ✅ Pass | test_api_keys_parsing |
-| 2026-03-03 | UT-CFG-003 | ✅ Pass | test_empty_api_keys |
-| 2026-03-03 | UT-CFG-004 | ✅ Pass | test_backend_url |
-| 2026-03-03 | UT-AUTH-001 | ✅ Pass | test_no_auth_configured_passes_all |
-| 2026-03-03 | UT-AUTH-002 | ✅ Pass | test_valid_api_key_passes |
-| 2026-03-03 | UT-AUTH-003 | ✅ Pass | test_invalid_api_key_rejected |
-| 2026-03-03 | UT-AUTH-004 | ✅ Pass | test_missing_auth_header_rejected |
-| 2026-03-03 | UT-AUTH-005 | ✅ Pass | test_health_endpoint_bypasses_auth |
+**Summary**: 6/6 passed, 0 failed
 
 ---
 
 ## 4. Known Issues
 
-| Issue ID | Related Test | Description | Severity | Status |
-|:--|:--|:--|:--|:--|
-| ISS-001 | UT-CFG-002 | Original test had env var race condition (parallel tests) | Low | ✅ Fixed — tests now parse directly |
+| ID | Description | Status | Resolution |
+|:--|:--|:--|:--|
+| ISS-001 | vllm-metal v0.16.0 crashes (`init_cpu_threads_env`) | 🟡 Open | Switched to mlx_lm.server (RISK-001 fallback) |
+| ISS-002 | Model `Qwen3.5-35B-A3B-4bit` not supported by vllm-metal | 🟡 Open | Using mlx_lm.server which supports all MLX models |
 
 ---
 
 ## 5. Pending Tests
 
-| Test ID | Blocked On | Notes |
+| Test ID | Description | Blocked On |
 |:--|:--|:--|
-| IT-001, IT-003 | Hardware | ต้อง start vllm-mlx server จริง |
-| ST-001~ST-004 | Hardware | ต้อง start full stack |
-| BT-001, BT-004 | Hardware | ต้องรัน benchmark บนเครื่องจริง |
+| BT-001 | Gateway latency overhead | Need larger model for meaningful benchmark |
+| BT-004 | Concurrent throughput | Need real workload testing |

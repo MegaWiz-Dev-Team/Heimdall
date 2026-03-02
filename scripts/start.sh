@@ -20,7 +20,7 @@ if [ -f "$PROJECT_DIR/.env" ]; then
     set +a
 fi
 
-LLM_MODEL="${LLM_MODEL:-mlx-community/Qwen3.5-35B-A3B-Instruct-4bit}"
+LLM_MODEL="${LLM_MODEL:-mlx-community/Qwen3.5-35B-A3B-4bit}"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
 GATEWAY_PORT="${GATEWAY_PORT:-3000}"
 
@@ -39,15 +39,16 @@ echo "🔌 Backend: 127.0.0.1:$BACKEND_PORT"
 echo "🌐 Gateway: 0.0.0.0:$GATEWAY_PORT"
 echo ""
 
-# --- Start vllm-mlx Backend ---
-echo "1️⃣  Starting vllm-mlx backend..."
+# --- Start MLX Backend ---
+echo "1️⃣  Starting mlx_lm backend..."
 if [ -d "$PROJECT_DIR/.venv" ]; then
     source "$PROJECT_DIR/.venv/bin/activate"
 elif [ -d "$HOME/.venv-vllm-metal" ]; then
     source "$HOME/.venv-vllm-metal/bin/activate"
 fi
 
-nohup vllm serve "$LLM_MODEL" \
+nohup python3 -m mlx_lm.server \
+    --model "$LLM_MODEL" \
     --port "$BACKEND_PORT" \
     > "$LOGS_DIR/backend.log" 2>&1 &
 echo $! > "$PIDS_DIR/backend.pid"

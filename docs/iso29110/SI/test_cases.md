@@ -39,8 +39,8 @@
 
 | Test ID | Requirement | Description | Status |
 |:--|:--|:--|:--|
-| IT-001 | REQ-001, REQ-010 | Client → Heimdall → vllm-mlx (chat completion) | ⬜ Pending |
-| IT-003 | REQ-015 | SSE streaming through gateway | ⬜ Pending |
+| IT-001 | REQ-001, REQ-010 | Client → Heimdall → mlx_lm (chat completion) | ✅ Pass |
+| IT-003 | REQ-015 | SSE streaming through gateway | ✅ Pass |
 
 ---
 
@@ -48,10 +48,10 @@
 
 | Test ID | Requirement | Command | Status |
 |:--|:--|:--|:--|
-| ST-001 | REQ-004 | `GET /v1/models` → 200 + model list | ⬜ Pending |
-| ST-002 | REQ-004 | `POST /v1/chat/completions` → 200 + AI response | ⬜ Pending |
-| ST-003 | REQ-005 | `POST /v1/chat/completions` stream=true → SSE chunks | ⬜ Pending |
-| ST-004 | REQ-016 | `GET /metrics` → Prometheus format | ⬜ Pending |
+| ST-001 | REQ-004 | `GET /v1/models` → 200 + model list | ✅ Pass |
+| ST-002 | REQ-004 | `POST /v1/chat/completions` → 200 + AI response | ✅ Pass |
+| ST-003 | REQ-005 | `POST /v1/chat/completions` stream=true → SSE chunks | ✅ Pass |
+| ST-004 | REQ-016 | `GET /metrics` → Prometheus format | ✅ Pass |
 
 ---
 

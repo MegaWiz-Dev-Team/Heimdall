@@ -60,7 +60,7 @@ RESPONSE=$(curl -s -w "\n%{http_code}" "$GATEWAY_URL/metrics" 2>/dev/null || ech
 HTTP_CODE=$(echo "$RESPONSE" | tail -1)
 BODY=$(echo "$RESPONSE" | sed '$d')
 
-if [ "$HTTP_CODE" = "200" ] && echo "$BODY" | grep -q "http_requests"; then
+if [ "$HTTP_CODE" = "200" ] && echo "$BODY" | grep -q "proxy_requests"; then
     log_pass "GET /metrics → 200 + Prometheus format"
 else
     log_fail "GET /metrics → expected 200 + prometheus" "Got HTTP $HTTP_CODE"
