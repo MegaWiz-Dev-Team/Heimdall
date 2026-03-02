@@ -15,12 +15,6 @@
 5. ใช้ ISO 29110 Basic Profile สำหรับ project documentation
 6. ใช้ TDD approach ตลอดการพัฒนา
 
-**Action Items**:
-- [ ] Finalize engine selection (vllm-mlx vs mistral.rs)
-- [ ] Finalize gateway framework (Axum vs Actix-web)
-- [ ] Complete requirements specification
-- [ ] Complete software design document
-
 ---
 
 ### MR-002: Architecture Decision — 2026-03-02
@@ -40,11 +34,36 @@
 - Axum has `axum-reverse-proxy` crate for SSE streaming
 - Single engine = simpler, more reliable, full RAM available
 
-**Action Items**:
-- [/] Build Rust API gateway (Axum)
-- [ ] Setup vllm-mlx with Qwen3.5-35B-A3B
-- [ ] Create operation scripts
-- [ ] Benchmark on actual hardware
+---
+
+### MR-003: Container Decision — 2026-03-03
+
+**Participants**: User, Antigravity AI
+
+**Context**: User asked about Docker Compose vs K3s for containerization.
+
+**Analysis**:
+- Docker/K3s on macOS **cannot access Metal GPU** (runs in Linux VM)
+- vllm-mlx requires Metal GPU for inference → must run host-native
+- Gateway is a single ~5MB binary → containerization = overkill
+- Docker Desktop uses ~1-2GB RAM → better to allocate to KV cache
+
+**Decision**: **No containers — bare-metal deployment**
+- vllm-mlx runs host-native (Metal GPU)
+- Rust gateway runs as host process
+- Operation scripts (start/stop) manage processes
+- K3s rejected: overkill for single machine
+
+---
+
+### MR-004: Project Naming — 2026-03-03
+
+**Participants**: User, Antigravity AI
+
+**Decision**: Project renamed to **Heimdall** 🛡️
+- เทพผู้พิทักษ์ Bifrost ในตำนานนอร์ส
+- มองเห็นได้ไกลถึงขอบจักรวาล = gateway ที่เห็นทุก request
+- Updated: Cargo.toml, main.rs, proxy.rs, README, all scripts
 
 ---
 

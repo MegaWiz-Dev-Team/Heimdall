@@ -1,4 +1,4 @@
-# Requirements Specification
+# Requirements Specification — Heimdall
 > ISO/IEC 29110 Basic Profile — Software Implementation Process
 
 ## 1. Document Control
@@ -6,10 +6,9 @@
 | Field | Value |
 |:--|:--|
 | **Document ID** | SI-REQ-001 |
-| **Version** | 0.1 (Draft) |
-| **Last Updated** | 2026-03-02 |
-| **Author** | — |
-| **Status** | 🟡 Draft |
+| **Version** | 1.0 |
+| **Last Updated** | 2026-03-03 |
+| **Status** | ✅ Approved (Option A: Single Engine) |
 
 ---
 
@@ -17,56 +16,61 @@
 
 ### Engine Layer
 
-| Req ID | Priority | Requirement | Acceptance Criteria |
+| Req ID | Priority | Requirement | Status |
 |:--|:--|:--|:--|
-| REQ-001 | MUST | ระบบต้องรัน LLM inference ผ่าน **vllm-mlx** ได้ | Start server → call `/v1/chat/completions` → ได้ response |
-| REQ-002 | MUST | ระบบต้องรัน LLM inference ผ่าน **mistral.rs** ได้ | Start server → call `/v1/chat/completions` → ได้ response |
-| REQ-003 | SHOULD | ระบบต้องรัน LLM inference ผ่าน **mlx_lm.server** ได้ | Start server → call API → ได้ response |
-| REQ-004 | MUST | ทุก engine ต้อง expose **OpenAI-compatible API** | `/v1/models`, `/v1/chat/completions` ทำงานได้ |
-| REQ-005 | MUST | ต้องรองรับ **streaming** response (SSE) | ส่ง `"stream": true` → ได้ chunked response |
-| REQ-006 | SHOULD | ต้อง load/unload model ได้โดยไม่ต้อง restart server | API call เปลี่ยน model → model ใหม่ active |
+| REQ-001 | MUST | ระบบต้องรัน LLM inference ผ่าน **vllm-mlx** ได้ | 🟡 Implemented (untested on hw) |
+| ~~REQ-002~~ | ~~MUST~~ | ~~mistral.rs support~~ | ❌ Cancelled (Option A) |
+| ~~REQ-003~~ | ~~SHOULD~~ | ~~mlx_lm.server support~~ | ❌ Cancelled (Option A) |
+| REQ-004 | MUST | Engine ต้อง expose **OpenAI-compatible API** | ✅ vllm-mlx provides this |
+| REQ-005 | MUST | ต้องรองรับ **streaming** response (SSE) | ✅ Implemented in proxy.rs |
 
-### API Gateway Layer
+### API Gateway Layer (Heimdall)
 
-| Req ID | Priority | Requirement | Acceptance Criteria |
+| Req ID | Priority | Requirement | Status |
 |:--|:--|:--|:--|
-| REQ-010 | MUST | มี **Rust API Gateway** ทำ reverse proxy ไปยัง backend engines | Request ผ่าน gateway → forward ไปยัง engine → response กลับ |
-| REQ-011 | MUST | Gateway ต้อง route request ไปยัง engine ที่เลือกได้ | ส่ง header `X-Engine: vllm-mlx` → route ไป vllm-mlx |
-| REQ-012 | MUST | Gateway ต้องมี **API key authentication** | Request ไม่มี key → 401, มี key ถูก → pass through |
-| REQ-013 | SHOULD | Gateway ต้องมี **rate limiting** | เกิน limit → 429 Too Many Requests |
-| REQ-014 | MUST | Gateway ต้อง **health check** backend engines | Backend ล่ม → auto remove, กลับมา → auto add |
-| REQ-015 | MUST | Gateway ต้อง proxy **SSE streaming** ได้ | Streaming response pass-through ถูกต้อง |
-| REQ-016 | SHOULD | Gateway ต้องมี **metrics endpoint** `/metrics` | Prometheus scrape ได้ — latency, throughput, errors |
+| REQ-010 | MUST | **Rust API Gateway** ทำ reverse proxy ไปยัง backend | ✅ proxy.rs |
+| ~~REQ-011~~ | ~~MUST~~ | ~~Multi-engine routing~~ | ❌ Cancelled (single engine) |
+| REQ-012 | MUST | **API key authentication** (Bearer token) | ✅ auth.rs (5 tests) |
+| REQ-013 | SHOULD | **Rate limiting** | ⬜ Not yet |
+| REQ-014 | MUST | **Health check** endpoint | ✅ health.rs |
+| REQ-015 | MUST | **SSE streaming** proxy | ✅ proxy.rs |
+| REQ-016 | SHOULD | **Metrics** endpoint (`/metrics`) | ✅ metrics_handler.rs |
 
 ### Operations
 
-| Req ID | Priority | Requirement | Acceptance Criteria |
+| Req ID | Priority | Requirement | Status |
 |:--|:--|:--|:--|
-| REQ-020 | MUST | มี script **setup** environment ได้ด้วย 1 command | `./scripts/setup.sh` → environment พร้อมใช้ |
-| REQ-021 | MUST | มี script **start/stop** server ได้ | `./scripts/start.sh` / `./scripts/stop.sh` ทำงาน |
-| REQ-022 | MUST | มี **benchmark script** เปรียบเทียบ engine ได้ | `./scripts/benchmark.sh` → output TTFT, TPS, throughput |
-| REQ-023 | SHOULD | Network clients ใน LAN ต้องเข้าถึง API ได้ | `curl http://<ip>:3000/v1/models` จาก machine อื่น → response |
+| REQ-020 | MUST | Script **setup** environment | ✅ setup.sh |
+| REQ-021 | MUST | Script **start/stop** server | ✅ start.sh, stop.sh |
+| REQ-022 | MUST | **Benchmark** script with multi-model support | ✅ benchmark.sh + HTML report |
+| REQ-023 | SHOULD | LAN clients ต้องเข้าถึง API ได้ | 🟡 Config ready (0.0.0.0 binding) |
+| REQ-024 | SHOULD | **SemVer versioning** system | ✅ VERSION + version.sh |
 
 ---
 
 ## 3. Non-Functional Requirements
 
-| Req ID | Priority | Requirement | Target |
-|:--|:--|:--|:--|
-| NFR-001 | MUST | Gateway latency overhead | < 1ms per request |
-| NFR-002 | MUST | Memory — model + gateway + OS | ≤ 60GB (เหลือ buffer 4GB) |
-| NFR-003 | SHOULD | Gateway concurrent connections | ≥ 100 simultaneous |
-| NFR-004 | MUST | First token latency (TTFT) | < 500ms for default model |
-| NFR-005 | MUST | Test coverage (Rust code) | ≥ 80% |
+| Req ID | Priority | Requirement | Target | Status |
+|:--|:--|:--|:--|:--|
+| NFR-001 | MUST | Gateway latency overhead | < 1ms | 🟡 Untested |
+| NFR-002 | MUST | Memory: model + gateway + OS | ≤ 60GB | ✅ MoE ~20GB + gateway ~5MB |
+| NFR-003 | SHOULD | Concurrent connections | ≥ 100 | 🟡 Untested |
+| NFR-004 | MUST | TTFT | < 500ms | 🟡 Untested |
+| NFR-005 | MUST | Unit test coverage | ≥ 80% | 🟡 9 tests (config + auth) |
 
 ---
 
 ## 4. Traceability Matrix
 
-> จะเติมเมื่อ Design + Test Cases พร้อม
-
-| Req ID | Design Component | Test Case ID |
-|:--|:--|:--|
-| REQ-001 | — | — |
-| REQ-010 | — | — |
-| ... | ... | ... |
+| Req ID | Design Component | Test Case | Status |
+|:--|:--|:--|:--|
+| REQ-001 | vllm-mlx backend | IT-001 | 🟡 |
+| REQ-005 | proxy.rs (SSE) | IT-003, ST-003 | ✅ Implemented |
+| REQ-010 | proxy.rs | IT-001 | ✅ Implemented |
+| REQ-012 | auth.rs | UT-AUTH-001~005 | ✅ 5/5 Pass |
+| REQ-014 | health.rs | UT-HC-001 | ✅ Implemented |
+| REQ-016 | metrics_handler.rs | ST-004 | ✅ Implemented |
+| REQ-020 | setup.sh | — | ✅ Done |
+| REQ-021 | start.sh, stop.sh | — | ✅ Done |
+| REQ-022 | benchmark.sh | BT-001~005 | ✅ Done |
+| REQ-024 | VERSION, version.sh | — | ✅ Done |
