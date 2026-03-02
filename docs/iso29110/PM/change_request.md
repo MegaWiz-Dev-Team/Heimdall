@@ -12,3 +12,4 @@
 | CR-005 | 2026-03-03 | Rename project to Heimdall | Low | ✅ Approved | WBS-008: all files updated |
 | CR-006 | 2026-03-03 | Multi-model benchmark support | Medium | ✅ Approved | WBS-009: --models, --all flags |
 | CR-007 | 2026-03-03 | SemVer versioning system | Low | ✅ Approved | WBS-007: VERSION + version.sh |
+| CR-008 | 2026-03-03 | SQLite benchmark storage + history CLI | Low | ✅ Approved | WBS-013: REQ-025, REQ-026 |

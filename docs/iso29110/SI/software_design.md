@@ -76,8 +76,19 @@
 | `generate_report.sh` | Generate HTML dashboard from benchmark JSON |
 | `report_template.py` | Python HTML report renderer |
 | `version.sh` | SemVer management (show/bump/set/tag/release) |
+| `benchmark_history.sh` | Query benchmark history, compare versions (planned) |
 
-### 3.4 Configuration
+### 3.4 Data Layer (Planned)
+
+- **`data/heimdall.db`** — SQLite database for benchmark persistence
+- Schema:
+
+| Table | Columns | Purpose |
+|:--|:--|:--|
+| `runs` | id, timestamp, version, git_commit, hardware_json | Benchmark run metadata |
+| `results` | id, run_id, model, test_type, tps_avg, ttfb_avg, tokens_avg, memory_mb, runs_json | Per-model per-test results |
+
+### 3.5 Configuration
 
 - **`.env`** file (loaded by both scripts and gateway)
 - Key variables: `GATEWAY_PORT`, `BACKEND_PORT`, `API_KEYS`, `LLM_MODEL`
@@ -117,3 +128,5 @@ Client Request
 | Scripts — operations | REQ-020, REQ-021, REQ-023 | ✅ Done |
 | Scripts — benchmark | REQ-022 | ✅ Multi-model |
 | Scripts — versioning | REQ-024 | ✅ SemVer |
+| Data — SQLite | REQ-025 | ⬜ Planned |
+| Scripts — history | REQ-026 | ⬜ Planned |

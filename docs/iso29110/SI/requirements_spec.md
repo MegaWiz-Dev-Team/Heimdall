@@ -45,6 +45,8 @@
 | REQ-022 | MUST | **Benchmark** script with multi-model support | ✅ benchmark.sh + HTML report |
 | REQ-023 | SHOULD | LAN clients ต้องเข้าถึง API ได้ | 🟡 Config ready (0.0.0.0 binding) |
 | REQ-024 | SHOULD | **SemVer versioning** system | ✅ VERSION + version.sh |
+| REQ-025 | SHOULD | เก็บผล benchmark ลง **SQLite** ทุกครั้งที่รัน | ⬜ Planned |
+| REQ-026 | SHOULD | **Benchmark history** CLI เปรียบเทียบผลข้าม version | ⬜ Planned |
 
 ---
 
@@ -74,3 +76,5 @@
 | REQ-021 | start.sh, stop.sh | — | ✅ Done |
 | REQ-022 | benchmark.sh | BT-001~005 | ✅ Done |
 | REQ-024 | VERSION, version.sh | — | ✅ Done |
+| REQ-025 | data/heimdall.db | — | ⬜ Planned |
+| REQ-026 | benchmark_history.sh | — | ⬜ Planned |

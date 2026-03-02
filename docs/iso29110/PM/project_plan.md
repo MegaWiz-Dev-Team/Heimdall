@@ -60,6 +60,7 @@
 | WBS-010 | ISO 29110 documentation update | 🟡 In Progress | — |
 | WBS-011 | Integration testing | ⬜ Not Started | — |
 | WBS-012 | Production deployment & benchmark | ⬜ Not Started | — |
+| WBS-013 | SQLite benchmark storage + history CLI | ⬜ Planned | REQ-025, REQ-026 |
 
 ## 6. Risks
 
