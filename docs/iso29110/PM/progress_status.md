@@ -9,6 +9,7 @@
 | 2026-03-02 | — | Research MLX/vLLM ecosystem | ✅ Done | Compared vllm-mlx, vllm-metal, mlx-lm |
 | 2026-03-02 | — | Research Rust LLM options | ✅ Done | Identified Candle, mistral.rs, mlx-rs |
 | 2026-03-02 | — | Architecture comparison | ✅ Done | Hybrid architecture proposed |
+| 2026-03-02 | WBS-001 | Git repo setup | ✅ Done | Pushed to github.com/megacare-dev/mega-llm-server |
 
 ## Current Status Summary
 

@@ -1,0 +1,47 @@
+[package]
+name = "llm-gateway"
+version = "0.1.0"
+edition = "2021"
+description = "Rust API Gateway for LLM Server — proxies to vllm-mlx backend"
+license = "MIT"
+
+[dependencies]
+# Web framework
+axum = { version = "0.8", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+# HTTP client for proxying
+reqwest = { version = "0.12", features = ["json", "stream"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Config
+dotenvy = "0.15"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Time
+chrono = "0.4"
+
+# Metrics
+metrics = "0.24"
+metrics-exporter-prometheus = "0.16"
+
+# Streaming
+futures = "0.3"
+bytes = "1"
+
+[dev-dependencies]
+# Testing
+tokio-test = "0.4"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
