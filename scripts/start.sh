@@ -40,17 +40,32 @@ echo "🌐 Gateway: 0.0.0.0:$GATEWAY_PORT"
 echo ""
 
 # --- Start MLX Backend ---
-echo "1️⃣  Starting mlx_lm backend..."
+# Auto-detect: vision/multimodal models use mlx_vlm, text models use mlx_lm
+IS_VLM=false
+if echo "$LLM_MODEL" | grep -qiE "Qwen3\.5|vlm|vision"; then
+    IS_VLM=true
+    echo "1️⃣  Starting mlx_vlm backend (multimodal)..."
+else
+    echo "1️⃣  Starting mlx_lm backend..."
+fi
+
 if [ -d "$PROJECT_DIR/.venv" ]; then
     source "$PROJECT_DIR/.venv/bin/activate"
 elif [ -d "$HOME/.venv-vllm-metal" ]; then
     source "$HOME/.venv-vllm-metal/bin/activate"
 fi
 
-nohup python3 -m mlx_lm.server \
-    --model "$LLM_MODEL" \
-    --port "$BACKEND_PORT" \
-    > "$LOGS_DIR/backend.log" 2>&1 &
+if [ "$IS_VLM" = true ]; then
+    # mlx_vlm.server loads model on-demand via API, not CLI
+    nohup python3 -m mlx_vlm.server \
+        --port "$BACKEND_PORT" \
+        > "$LOGS_DIR/backend.log" 2>&1 &
+else
+    nohup python3 -m mlx_lm.server \
+        --model "$LLM_MODEL" \
+        --port "$BACKEND_PORT" \
+        > "$LOGS_DIR/backend.log" 2>&1 &
+fi
 echo $! > "$PIDS_DIR/backend.pid"
 echo "   PID: $(cat "$PIDS_DIR/backend.pid") — Log: logs/backend.log"
 

@@ -29,7 +29,7 @@ pub struct BackendHealth {
 /// GET /health — Check gateway + backend health
 async fn health_check(State(state): State<AppState>) -> (StatusCode, Json<HealthResponse>) {
     let backend_url = state.config.backend_url();
-    let models_url = format!("{}/v1/models", backend_url);
+    let models_url = format!("{}/models", backend_url);
 
     // Try to reach the backend
     let (backend_status, models) = match state.http_client.get(&models_url).send().await {

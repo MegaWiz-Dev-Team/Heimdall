@@ -25,7 +25,13 @@ async fn proxy_handler(
 ) -> Result<Response, StatusCode> {
     let start = std::time::Instant::now();
     let path = uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
-    let backend_url = format!("{}{}", state.config.backend_url(), path);
+    // Strip /v1 prefix — backend may use /chat/completions (mlx_vlm) or /v1/chat/completions (mlx_lm)
+    let backend_path = if path.starts_with("/v1/") {
+        &path[3..] // "/v1/chat/completions" → "/chat/completions"
+    } else {
+        path
+    };
+    let backend_url = format!("{}{}", state.config.backend_url(), backend_path);
 
     tracing::info!("{} {} → {}", method, uri, backend_url);
 
