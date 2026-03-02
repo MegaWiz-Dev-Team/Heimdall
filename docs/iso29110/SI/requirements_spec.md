@@ -42,13 +42,14 @@
 |:--|:--|:--|:--|
 | REQ-020 | MUST | Script **setup** environment | ✅ setup.sh |
 | REQ-021 | MUST | Script **start/stop** server | ✅ start.sh, stop.sh |
-| REQ-022 | MUST | **Benchmark** script with multi-model support | ✅ benchmark.sh + HTML report |
+| REQ-022 | MUST | **Benchmark** script รองรับ multi-model + multi-type (LLM/Embedding/Reranker) | ✅ benchmark.sh (LLM), ⬜ Embedding/Reranker |
 | REQ-023 | SHOULD | LAN clients ต้องเข้าถึง API ได้ | 🟡 Config ready (0.0.0.0 binding) |
 | REQ-024 | SHOULD | **SemVer versioning** system | ✅ VERSION + version.sh |
 | REQ-025 | SHOULD | เก็บผล benchmark ลง **SQLite** ทุกครั้งที่รัน | ⬜ Planned |
 | REQ-026 | SHOULD | **Benchmark history** CLI เปรียบเทียบผลข้าม version | ⬜ Planned |
 | REQ-027 | SHOULD | Model ที่ใช้งานเก็บ **internal SSD**, ไม่ใช้ย้ายไป **external SSD** | ⬜ Planned |
 | REQ-028 | SHOULD | **Model manager** script จัดการ archive/restore models | ⬜ Planned |
+| REQ-029 | SHOULD | **HTML report** รองรับทุก model type — metrics ตาม type | ⬜ Planned |
 
 ---
 

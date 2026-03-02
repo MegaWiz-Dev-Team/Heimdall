@@ -78,7 +78,42 @@
 | `version.sh` | SemVer management (show/bump/set/tag/release) |
 | `benchmark_history.sh` | Query benchmark history, compare versions (planned) |
 
-### 3.4 Data Layer (Planned)
+### 3.4 Benchmark Multi-Type Spec (Planned)
+
+> REQ-022, REQ-029 — Benchmark ต้องรองรับ 3 ประเภท model
+
+| Model Type | Metrics | Test Scenarios |
+|:--|:--|:--|
+| **LLM** (generative) | TPS, TTFT, Total Time, Tokens Generated | Short (50 tok), Medium (200 tok), Long (500 tok) |
+| **Embedding** | Encode/s, Latency/batch, Dimension, Throughput | Single, Batch-32, Batch-128, Long-text (8K) |
+| **Reranker** | Pairs/s, Latency/query, Accuracy (if labeled) | 10-doc, 50-doc, 100-doc rerank |
+
+#### Report Layout by Type
+
+```
+┌─ LLM Section ─────────────────────────────────┐
+│ 👑 Winner Badge (best TPS)                    │
+│ Comparison Table: Model × TPS × TTFT × Tokens │
+│ TPS Bar Charts (Short/Medium/Long)            │
+│ Per-model Detail Cards                        │
+└───────────────────────────────────────────────┘
+
+┌─ Embedding Section ───────────────────────────┐
+│ 👑 Winner Badge (best throughput)             │
+│ Comparison Table: Model × Dim × Enc/s × Size  │
+│ Throughput Bar Charts (Single/Batch/Long)     │
+│ Per-model Detail Cards                        │
+└───────────────────────────────────────────────┘
+
+┌─ Reranker Section ────────────────────────────┐
+│ 👑 Winner Badge (best pairs/s)               │
+│ Comparison Table: Model × Pairs/s × Latency  │
+│ Speed Bar Charts (10/50/100 docs)             │
+│ Per-model Detail Cards                        │
+└───────────────────────────────────────────────┘
+```
+
+### 3.5 Data Layer (Planned)
 
 - **`data/heimdall.db`** — SQLite database for benchmark persistence
 - Schema:
@@ -88,7 +123,7 @@
 | `runs` | id, timestamp, version, git_commit, hardware_json | Benchmark run metadata |
 | `results` | id, run_id, model, test_type, tps_avg, ttfb_avg, tokens_avg, memory_mb, runs_json | Per-model per-test results |
 
-### 3.5 Configuration
+### 3.6 Configuration
 
 - **`.env`** file (loaded by both scripts and gateway)
 - Key variables: `GATEWAY_PORT`, `BACKEND_PORT`, `API_KEYS`, `LLM_MODEL`
