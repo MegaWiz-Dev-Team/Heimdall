@@ -42,32 +42,42 @@ if [ ! -d "$VENV_DIR" ]; then
 else
     echo "  ✅ Virtualenv exists at $VENV_DIR"
 fi
-source "$VENV_DIR/bin/activate"
-pip install --quiet --upgrade pip
+
+# Use explicit venv pip/python paths (more reliable than source activate)
+VPIP="$VENV_DIR/bin/pip"
+VPYTHON="$VENV_DIR/bin/python3"
+
+"$VPIP" install --quiet --upgrade pip
 
 # --- Install MLX packages ---
 echo ""
 echo "📦 Installing MLX packages..."
-pip install --quiet mlx-lm
+"$VPIP" install --quiet mlx-lm
 echo "  ✅ mlx-lm installed"
 
-pip install --quiet mlx-vlm
+"$VPIP" install --quiet mlx-vlm
 echo "  ✅ mlx-vlm installed"
 
-pip install --quiet mlx-embedding-models
+"$VPIP" install --quiet mlx-embedding-models
 echo "  ✅ mlx-embedding-models installed"
 
 # --- Build Gateway ---
 echo ""
 echo "🦀 Building Rust Gateway..."
-(cd "$PROJECT_DIR/gateway" && cargo build --release 2>&1 | tail -1)
-echo "  ✅ Gateway built: gateway/target/release/heimdall-gateway"
+if [ -d "$PROJECT_DIR/gateway" ]; then
+    (cd "$PROJECT_DIR/gateway" && cargo build --release 2>&1 | tail -1)
+    echo "  ✅ Gateway built"
+else
+    echo "  ⚠️  Gateway directory not found — skipping build"
+fi
 
 # --- Create .env if not exists ---
 if [ ! -f "$PROJECT_DIR/.env" ]; then
-    cp "$PROJECT_DIR/.env.example" "$PROJECT_DIR/.env"
-    echo ""
-    echo "📄 Created .env from .env.example — edit as needed"
+    if [ -f "$PROJECT_DIR/.env.example" ]; then
+        cp "$PROJECT_DIR/.env.example" "$PROJECT_DIR/.env"
+        echo ""
+        echo "📄 Created .env from .env.example — edit as needed"
+    fi
 fi
 
 # --- Create directories ---
