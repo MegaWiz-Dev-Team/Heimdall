@@ -2,7 +2,7 @@
 """MLX Embedding Server for Heimdall.
 
 Provides a REST API for text embeddings using mlx-embedding-models.
-Default model: BAAI/bge-m3
+Default model: BAAI/bge-m3 (registry key: bge-m3)
 
 Endpoints:
   GET  /health           - Health check
@@ -23,12 +23,31 @@ log = logging.getLogger("embedding")
 MODEL_NAME = os.environ.get("EMBEDDING_MODEL", "BAAI/bge-m3")
 PORT = int(os.environ.get("EMBEDDING_PORT", "8001"))
 
+# Map full HuggingFace model names to mlx-embedding-models registry keys
+REGISTRY_MAP = {
+    "BAAI/bge-m3": "bge-m3",
+    "BAAI/bge-small-en-v1.5": "bge-small",
+    "BAAI/bge-large-en-v1.5": "bge-large",
+}
+
+registry_key = REGISTRY_MAP.get(MODEL_NAME, MODEL_NAME)
+
 # Load model at startup
-log.info(f"Loading embedding model: {MODEL_NAME}")
+log.info(f"Loading embedding model: {MODEL_NAME} (registry: {registry_key})")
 try:
     from mlx_embedding_models.embedding import EmbeddingModel
-    model = EmbeddingModel.from_registry(MODEL_NAME)
+    model = EmbeddingModel.from_registry(registry_key)
     log.info(f"✅ Model loaded: {MODEL_NAME}")
+except KeyError:
+    log.error(f"❌ Model '{registry_key}' not found in registry")
+    log.error(f"   Try using from_pretrained() for HuggingFace models")
+    log.info(f"   Falling back to from_pretrained('{MODEL_NAME}')...")
+    try:
+        model = EmbeddingModel.from_pretrained(MODEL_NAME)
+        log.info(f"✅ Model loaded via from_pretrained: {MODEL_NAME}")
+    except Exception as e2:
+        log.error(f"❌ from_pretrained also failed: {e2}")
+        sys.exit(1)
 except Exception as e:
     log.error(f"❌ Failed to load model: {e}")
     log.error("Install: pip install mlx-embedding-models")
