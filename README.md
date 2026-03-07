@@ -1,136 +1,107 @@
-# Heimdall 🛡️
+# 🛡️ Heimdall — LLM Gateway
 
-> *ผู้พิทักษ์แห่ง LLM realm* — Internal LLM API Server on Mac Mini M4 Pro 64GB
+> Part of the [Asgard AI Platform](https://github.com/megacare-dev/Asgard)
 
-**Heimdall** (เฮมดัลล์) เป็นเทพผู้พิทักษ์สะพาน Bifrost ในตำนานนอร์ส มองเห็นได้ไกลถึงขอบจักรวาล ได้ยินแม้หญ้างอก — เช่นเดียวกับ gateway นี้ที่เฝ้าดูทุก request ที่ผ่านเข้ามา
+Heimdall is a high-performance LLM gateway built in Rust (Axum + Tokio) that provides a unified OpenAI-compatible API for multiple local LLM backends.
+
+## Features
+
+- 🔄 **Multi-backend routing** — MLX, llama.cpp, Ollama, vLLM
+- 🔐 **API Key authentication** — Bearer token + API key validation
+- 📊 **Prometheus metrics** — Request latency, token usage, model stats
+- 🌊 **SSE streaming** — Real-time token streaming
+- 📈 **Benchmark suite** — Automated performance testing with historical tracking
+- 🧮 **MLX Embedding server** — BAAI/bge-m3 for vector embeddings
+- 💾 **SQLite persistence** — Benchmark history and model catalog
+
+## Asgard Port Assignments
+
+> Full port map: [Asgard Port Allocation](https://github.com/megacare-dev/Asgard/blob/main/docs/technical/port-allocation-startup.md)
+
+| Port | Service | Description |
+|------|---------|-------------|
+| `8080` | **Heimdall Gateway** | Main API endpoint |
+| `8081` | mlx_lm | Text LLM backend |
+| `8082` | mlx_vlm | Vision LLM backend *(reserved)* |
+| `8083` | llama.cpp | GGUF backend *(reserved)* |
+| `8084` | vLLM | NVIDIA backend *(reserved)* |
+| `8001` | Embedding Server | MLX bge-m3 |
+| `11434` | Ollama | Managed models |
+
+## Quick Start
+
+### Prerequisites
+- macOS with Apple Silicon (M1/M2/M3/M4)
+- Rust (1.75+)
+- Python 3.11+ (for MLX backends)
+
+### 1. Setup
+```bash
+cp .env.example .env
+./scripts/setup.sh
+```
+
+### 2. Start
+```bash
+./scripts/start.sh
+```
+
+This starts (in order):
+1. **MLX Backend** (`:8081`) — loads the LLM model
+2. **Embedding Server** (`:8001`) — BAAI/bge-m3
+3. **Rust Gateway** (`:8080`) — proxies to backends
+
+### 3. Test
+```bash
+# Health check
+curl http://localhost:8080/health
+
+# List models
+curl http://localhost:8080/v1/models
+
+# Chat completion
+curl http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"auto","messages":[{"role":"user","content":"Hello!"}]}'
+```
+
+### 4. Stop
+```bash
+./scripts/stop.sh
+```
+
+## Configuration
+
+Edit `.env` to customize:
+
+```env
+GATEWAY_PORT=8080          # Gateway listen port
+BACKEND_PORT=8081          # MLX backend port
+BACKEND_ENGINE=mlx         # mlx | llama.cpp | ollama
+LLM_MODEL=mlx-community/Qwen3.5-9B-MLX-4bit
+EMBEDDING_MODEL=BAAI/bge-m3
+EMBEDDING_PORT=8001
+```
+
+## Benchmarks
+
+```bash
+./scripts/benchmark.sh              # Run benchmarks
+./scripts/benchmark_history.sh      # View historical results
+open reports/                       # HTML reports
+```
 
 ## Architecture
 
 ```
-Clients (LAN)  →  Heimdall Gateway (:3000)  →  vllm-mlx (:8000)
-                  ├── 🔑 API Key Auth              └── Qwen3.5-35B-A3B
-                  ├── 🛡️ Rate Limiting                  (MLX, 4-bit, MoE)
-                  ├── 💚 Health Check
-                  ├── 📊 Metrics (/metrics)
-                  └── 🌊 SSE Streaming Proxy
+Client → [:8080] Heimdall Gateway (Rust/Axum)
+              ├→ [:8081] mlx_lm    (Python/MLX)
+              ├→ [:8082] mlx_vlm   (Python/MLX)  [reserved]
+              ├→ [:8083] llama.cpp (C++)          [reserved]
+              ├→ [:8084] vLLM     (Python/CUDA)   [reserved]
+              └→ [:11434] Ollama  (Go)
 ```
 
-## Quick Start
+---
 
-```bash
-# 1. Setup (one-time)
-./scripts/setup.sh
-
-# 2. Start server
-./scripts/start.sh
-
-# 3. Check health
-./scripts/health_check.sh
-
-# 4. Benchmark
-./scripts/benchmark.sh 3
-```
-
-## API Usage
-
-API is **OpenAI-compatible** — use any OpenAI client library:
-
-```bash
-# List models
-curl http://localhost:3000/v1/models
-
-# Chat completion
-curl http://localhost:3000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "mlx-community/Qwen3.5-35B-A3B-Instruct-4bit",
-    "messages": [{"role": "user", "content": "Hello!"}]
-  }'
-
-# Streaming
-curl http://localhost:3000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "mlx-community/Qwen3.5-35B-A3B-Instruct-4bit",
-    "messages": [{"role": "user", "content": "Count 1 to 5"}],
-    "stream": true
-  }'
-```
-
-### With API Key
-
-```bash
-curl http://localhost:3000/v1/models \
-  -H "Authorization: Bearer your-api-key"
-```
-
-### Python Client
-
-```python
-from openai import OpenAI
-
-client = OpenAI(
-    base_url="http://localhost:3000/v1",
-    api_key="your-api-key",  # or "none" if auth disabled
-)
-
-response = client.chat.completions.create(
-    model="mlx-community/Qwen3.5-35B-A3B-Instruct-4bit",
-    messages=[{"role": "user", "content": "Hello!"}],
-)
-print(response.choices[0].message.content)
-```
-
-## Scripts
-
-| Script | Command | Description |
-|:--|:--|:--|
-| Setup | `./scripts/setup.sh` | Install dependencies + build |
-| Start | `./scripts/start.sh` | Launch vllm-mlx + Heimdall |
-| Stop | `./scripts/stop.sh` | Graceful shutdown |
-| Health | `./scripts/health_check.sh` | Check status |
-| Benchmark | `./scripts/benchmark.sh 5` | Run benchmarks + HTML report |
-| Version | `./scripts/version.sh show` | SemVer management |
-
-## Configuration
-
-Copy `.env.example` to `.env` and edit:
-
-| Variable | Default | Description |
-|:--|:--|:--|
-| `BACKEND_PORT` | `8000` | vllm-mlx port |
-| `GATEWAY_PORT` | `3000` | Heimdall Gateway port |
-| `LLM_MODEL` | `Qwen3.5-35B-A3B-Instruct-4bit` | Default model |
-| `API_KEYS` | *(empty)* | Comma-separated keys (empty = no auth) |
-| `HOST` | `0.0.0.0` | Bind address |
-
-## Project Structure
-
-```
-heimdall/
-├── gateway/                    # Rust API Gateway (Axum)
-│   └── src/
-│       ├── main.rs             # Entry point
-│       ├── auth.rs             # API key authentication
-│       ├── config.rs           # Environment config
-│       ├── health.rs           # Health check endpoints
-│       ├── metrics_handler.rs  # Prometheus metrics
-│       └── proxy.rs            # Reverse proxy + SSE streaming
-├── scripts/                    # Operation & benchmark scripts
-├── docs/iso29110/              # ISO 29110 project documentation
-├── VERSION                     # SemVer (0.1.0)
-└── README.md
-```
-
-## Hardware
-
-| Spec | Value |
-|:--|:--|
-| Machine | Mac Mini M4 Pro |
-| RAM | 64GB Unified Memory (~48GB usable for GPU) |
-| Bandwidth | 273 GB/s |
-| Default Model | Qwen3.5-35B-A3B-4bit (MoE, ~20GB, ~100+ tok/s) |
-
-## License
-
-MIT
+*Part of [🏰 Asgard AI Platform](https://github.com/megacare-dev/Asgard) — A self-hosted AI platform for Apple Silicon & NVIDIA GPU*
