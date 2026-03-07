@@ -32,24 +32,36 @@ else
     echo "  ✅ Python $(python3 --version | cut -d' ' -f2)"
 fi
 
-# --- Setup vllm-mlx ---
+# --- Setup Python venv ---
 echo ""
-echo "📦 Setting up vllm-mlx..."
+echo "📦 Setting up Python environment..."
 VENV_DIR="$PROJECT_DIR/.venv"
 if [ ! -d "$VENV_DIR" ]; then
     python3 -m venv "$VENV_DIR"
     echo "  ✅ Created virtualenv at $VENV_DIR"
+else
+    echo "  ✅ Virtualenv exists at $VENV_DIR"
 fi
 source "$VENV_DIR/bin/activate"
 pip install --quiet --upgrade pip
-pip install --quiet vllm-mlx
-echo "  ✅ vllm-mlx installed"
+
+# --- Install MLX packages ---
+echo ""
+echo "📦 Installing MLX packages..."
+pip install --quiet mlx-lm
+echo "  ✅ mlx-lm installed"
+
+pip install --quiet mlx-vlm
+echo "  ✅ mlx-vlm installed"
+
+pip install --quiet mlx-embedding-models
+echo "  ✅ mlx-embedding-models installed"
 
 # --- Build Gateway ---
 echo ""
 echo "🦀 Building Rust Gateway..."
 (cd "$PROJECT_DIR/gateway" && cargo build --release 2>&1 | tail -1)
-echo "  ✅ Gateway built: gateway/target/release/llm-gateway"
+echo "  ✅ Gateway built: gateway/target/release/heimdall-gateway"
 
 # --- Create .env if not exists ---
 if [ ! -f "$PROJECT_DIR/.env" ]; then
@@ -58,8 +70,8 @@ if [ ! -f "$PROJECT_DIR/.env" ]; then
     echo "📄 Created .env from .env.example — edit as needed"
 fi
 
-# --- Create logs directory ---
-mkdir -p "$PROJECT_DIR/logs"
+# --- Create directories ---
+mkdir -p "$PROJECT_DIR/logs" "$PROJECT_DIR/.pids"
 
 echo ""
 echo "✅ Setup complete!"
