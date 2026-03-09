@@ -38,6 +38,16 @@ try:
     from mlx_embedding_models.embedding import EmbeddingModel
     model = EmbeddingModel.from_registry(registry_key)
     log.info(f"✅ Model loaded: {MODEL_NAME}")
+
+    # Patch for transformers >= 5.0 compatibility
+    # transformers 5.x removed batch_encode_plus from PreTrainedTokenizerFast
+    # but mlx-embedding-models 0.0.11 still calls it in _tokenize()
+    if not hasattr(model.tokenizer, 'batch_encode_plus'):
+        def _compat_batch_encode_plus(texts, **kwargs):
+            return model.tokenizer(texts, **kwargs)
+        model.tokenizer.batch_encode_plus = _compat_batch_encode_plus
+        log.info("  ℹ️  Patched tokenizer.batch_encode_plus for transformers 5.x")
+
 except KeyError:
     log.error(f"❌ Model '{registry_key}' not found in registry")
     log.error(f"   Try using from_pretrained() for HuggingFace models")
@@ -45,6 +55,12 @@ except KeyError:
     try:
         model = EmbeddingModel.from_pretrained(MODEL_NAME)
         log.info(f"✅ Model loaded via from_pretrained: {MODEL_NAME}")
+        # Same patch for from_pretrained path
+        if not hasattr(model.tokenizer, 'batch_encode_plus'):
+            def _compat_batch_encode_plus(texts, **kwargs):
+                return model.tokenizer(texts, **kwargs)
+            model.tokenizer.batch_encode_plus = _compat_batch_encode_plus
+            log.info("  ℹ️  Patched tokenizer.batch_encode_plus for transformers 5.x")
     except Exception as e2:
         log.error(f"❌ from_pretrained also failed: {e2}")
         sys.exit(1)
