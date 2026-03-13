@@ -6,9 +6,9 @@
 | Field | Value |
 |:--|:--|
 | **Document ID** | SI-DES-001 |
-| **Version** | 1.0 |
-| **Last Updated** | 2026-03-03 |
-| **Status** | ✅ Implemented |
+| **Version** | 2.0 |
+| **Last Updated** | 2026-03-13 |
+| **Status** | ✅ Updated for v0.4.0 |
 
 ---
 
@@ -17,7 +17,7 @@
 ```
 ┌──────────────────────────────────────────────────────────┐
 │                    Internal Network (LAN)                 │
-│  Clients (dev machines, CI/CD, AI agents)                │
+│  Clients: Mimir, Bifrost, AI agents, dev machines        │
 └──────────────────────┬───────────────────────────────────┘
                        │ HTTP
                        ▼
@@ -27,16 +27,30 @@
 │  │ Auth     │ Proxy    │ Health   │ Metrics  │          │
 │  │ (Bearer) │(/v1→/)   │ Check    │(Prometheus│          │
 │  └──────────┴────┬─────┴──────────┴──────────┘          │
-│                  │ strips /v1 prefix                     │
+│                  │                                       │
+│  Endpoints:                                              │
+│    /v1/chat/completions  → proxy to backend              │
+│    /v1/models            → proxy to backend              │
+│    /health, /ready       → health.rs                     │
+│    /metrics              → Prometheus                    │
+│    /api-spec             → OpenAPI 3.1 JSON              │
+│    /docs                 → Scalar UI                     │
+│    /                     → root info                     │
+│                  │                                       │
 │                  ▼                                       │
-│  ┌──────────────────────────┐                           │
-│  │ mlx_vlm.server  :8000   │  ← multimodal (Qwen3.5)   │
-│  │ mlx_lm.server   :8000   │  ← text-only (Qwen3)      │
-│  │ Qwen3.5-27B-4bit        │  (auto-detect in start.sh) │
-│  │ (Metal GPU, ~16.2 GB)   │                           │
-│  └──────────────────────────┘                           │
+│  ┌──────────────────────────┐  ┌────────────────┐       │
+│  │ MLX Backend       :8000  │  │ Embedding :8001│       │
+│  │ • mlx_vlm.server        │  │ mlx-embedding  │       │
+│  │ • mlx_lm.server         │  │ FastAPI        │       │
+│  │ • llama.cpp              │  └────────────────┘       │
+│  │ Active: Qwen3.5-27B-4bit│                            │
+│  └──────────────────────────┘                            │
 │                                                          │
-│  Mac Mini M4 Pro — 64GB Unified Memory                  │
+│  ┌──────────────────────────┐                            │
+│  │ SQLite: heimdall.db      │ ← benchmark persistence   │
+│  └──────────────────────────┘                            │
+│                                                          │
+│  Mac Mini M4 Pro — 64GB Unified Memory                   │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -44,90 +58,64 @@
 
 ## 3. Component Design
 
-### 3.1 Heimdall Gateway (`gateway/src/`)
+### 3.1 Gateway (`gateway/src/`)
 
 | Module | File | Purpose | Req IDs |
 |:--|:--|:--|:--|
-| **Main** | `main.rs` | Axum server setup, middleware stack, routing | — |
-| **Config** | `config.rs` | Load settings from env (.env) | — |
-| **Auth** | `auth.rs` | Bearer token validation, bypass for /health, /metrics | REQ-012 |
-| **Proxy** | `proxy.rs` | Reverse proxy to backend, SSE streaming, root endpoint | REQ-010, REQ-015 |
-| **Health** | `health.rs` | `/health` + `/ready` — probes backend status | REQ-014 |
-| **Metrics** | `metrics_handler.rs` | Prometheus `/metrics` — request count, latency | REQ-016 |
+| **Main** | `main.rs` | Axum server, middleware stack, routing | — |
+| **Config** | `config.rs` | Load .env settings (4 tests) | — |
+| **Auth** | `auth.rs` | Bearer token validation, bypass /health (5 tests) | REQ-012 |
+| **Proxy** | `proxy.rs` | Reverse proxy, SSE streaming, /api-spec, /docs | REQ-010, REQ-015, REQ-017, REQ-018 |
+| **Health** | `health.rs` | `/health` + `/ready` — probes backend | REQ-014 |
+| **Metrics** | `metrics_handler.rs` | Prometheus `/metrics` | REQ-016 |
 
-### 3.2 Backend Engine
+### 3.2 Backend Engines
+
+| Engine | Port | API | Models |
+|:--|:--|:--|:--|
+| mlx_vlm.server (primary) | :8000 | OpenAI-compatible | Qwen3.5-27B-4bit, MedGemma-4B |
+| mlx_lm.server | :8000 | OpenAI-compatible | Text-only models |
+| llama.cpp (llama-server) | :8000 | OpenAI-compatible | GGUF models |
+
+### 3.3 Embedding Server
 
 | Component | Details |
 |:--|:--|
-| Engine | vllm-mlx (Python) |
-| Port | `:8000` |
-| API | OpenAI-compatible (`/v1/chat/completions`, `/v1/models`) |
-| Model | `mlx-community/Qwen3.5-35B-A3B-Instruct-4bit` |
-| Memory | ~20GB (MoE, 4-bit) + ~28GB KV cache |
+| Script | `scripts/embedding_server.py` |
+| Framework | FastAPI + mlx-embedding-models |
+| Port | :8001 |
+| API | `/v1/embeddings` (OpenAI-compatible) |
+| Model | mlx-community/bge-small-en-v1.5 |
 
-### 3.3 Scripts (`scripts/`)
+### 3.4 Scripts (`scripts/`)
 
 | Script | Purpose |
 |:--|:--|
 | `setup.sh` | Install Rust, Python, vllm-mlx, build gateway |
-| `start.sh` | Start vllm-mlx + Heimdall, manage PIDs, readiness check |
+| `start.sh` | Start backend + gateway, manage PIDs, readiness check |
 | `stop.sh` | Graceful shutdown via PID files |
 | `health_check.sh` | Probe gateway + backend health |
 | `benchmark.sh` | Multi-model benchmark (--models, --all, --runs) |
 | `generate_report.sh` | Generate HTML dashboard from benchmark JSON |
 | `report_template.py` | Python HTML report renderer |
 | `version.sh` | SemVer management (show/bump/set/tag/release) |
-| `benchmark_history.sh` | Query benchmark history, compare versions (planned) |
+| `model_manager.sh` | Archive/restore models (internal ↔ external SSD) |
+| `embedding_server.py` | FastAPI embedding server |
 
-### 3.4 Benchmark Multi-Type Spec (Planned)
+### 3.5 Data Layer
 
-> REQ-022, REQ-029 — Benchmark ต้องรองรับ 3 ประเภท model
-
-| Model Type | Metrics | Test Scenarios |
+| Store | Location | Purpose |
 |:--|:--|:--|
-| **LLM** (generative) | TPS, TTFT, Total Time, Tokens Generated | Short (50 tok), Medium (200 tok), Long (500 tok) |
-| **Embedding** | Encode/s, Latency/batch, Dimension, Throughput | Single, Batch-32, Batch-128, Long-text (8K) |
-| **Reranker** | Pairs/s, Latency/query, Accuracy (if labeled) | 10-doc, 50-doc, 100-doc rerank |
+| **SQLite** | `data/heimdall.db` | Benchmark persistence |
+| **JSON** | `reports/*.json` | Per-run benchmark results |
+| **HTML** | `reports/*.html` | Visual benchmark dashboards |
 
-#### Report Layout by Type
+Schema:
 
-```
-┌─ LLM Section ─────────────────────────────────┐
-│ 👑 Winner Badge (best TPS)                    │
-│ Comparison Table: Model × TPS × TTFT × Tokens │
-│ TPS Bar Charts (Short/Medium/Long)            │
-│ Per-model Detail Cards                        │
-└───────────────────────────────────────────────┘
-
-┌─ Embedding Section ───────────────────────────┐
-│ 👑 Winner Badge (best throughput)             │
-│ Comparison Table: Model × Dim × Enc/s × Size  │
-│ Throughput Bar Charts (Single/Batch/Long)     │
-│ Per-model Detail Cards                        │
-└───────────────────────────────────────────────┘
-
-┌─ Reranker Section ────────────────────────────┐
-│ 👑 Winner Badge (best pairs/s)               │
-│ Comparison Table: Model × Pairs/s × Latency  │
-│ Speed Bar Charts (10/50/100 docs)             │
-│ Per-model Detail Cards                        │
-└───────────────────────────────────────────────┘
-```
-
-### 3.5 Data Layer (Planned)
-
-- **`data/heimdall.db`** — SQLite database for benchmark persistence
-- Schema:
-
-| Table | Columns | Purpose |
-|:--|:--|:--|
-| `runs` | id, timestamp, version, git_commit, hardware_json | Benchmark run metadata |
-| `results` | id, run_id, model, test_type, tps_avg, ttfb_avg, tokens_avg, memory_mb, runs_json | Per-model per-test results |
-
-### 3.6 Configuration
-
-- **`.env`** file (loaded by both scripts and gateway)
-- Key variables: `GATEWAY_PORT`, `BACKEND_PORT`, `API_KEYS`, `LLM_MODEL`
+| Table | Columns |
+|:--|:--|
+| `runs` | id, timestamp, version, git_commit, hardware_json |
+| `results` | id, run_id, model, test_type, tps_avg, ttfb_avg, tokens_avg, memory_mb |
 
 ---
 
@@ -142,12 +130,14 @@ Client Request
     ▼
 [Route Matching]
     │
-    ├─ /health    → health.rs   → probe backend → JSON
-    ├─ /metrics   → metrics.rs  → Prometheus text
-    ├─ /v1/*      → proxy.rs    → forward to backend
-    │                              ├─ JSON response → return
-    │                              └─ SSE stream → pipe through
-    └─ /          → proxy.rs    → {"name":"Heimdall",...}
+    ├─ /health, /ready → health.rs  → probe backend → JSON
+    ├─ /metrics        → metrics.rs → Prometheus text
+    ├─ /api-spec       → proxy.rs   → OpenAPI 3.1 JSON
+    ├─ /docs           → proxy.rs   → Scalar UI
+    ├─ /v1/*           → proxy.rs   → forward to backend
+    │                     ├─ JSON response → return
+    │                     └─ SSE stream → pipe through
+    └─ /               → proxy.rs   → {"name":"Heimdall",...}
 ```
 
 ---
@@ -157,12 +147,16 @@ Client Request
 | Design Component | Requirement IDs | Status |
 |:--|:--|:--|
 | Gateway — auth.rs | REQ-012 | ✅ 5 tests |
-| Gateway — proxy.rs | REQ-010, REQ-015 | ✅ Implemented |
-| Gateway — health.rs | REQ-014 | ✅ Implemented |
-| Gateway — metrics_handler.rs | REQ-016 | ✅ Implemented |
-| Engine — vllm-mlx | REQ-001, REQ-004, REQ-005 | 🟡 Configured |
-| Scripts — operations | REQ-020, REQ-021, REQ-023 | ✅ Done |
-| Scripts — benchmark | REQ-022 | ✅ Multi-model |
-| Scripts — versioning | REQ-024 | ✅ SemVer |
-| Data — SQLite | REQ-025 | ⬜ Planned |
-| Scripts — history | REQ-026 | ⬜ Planned |
+| Gateway — proxy.rs | REQ-010, REQ-015, REQ-017, REQ-018 | ✅ |
+| Gateway — health.rs | REQ-014 | ✅ |
+| Gateway — metrics_handler.rs | REQ-016 | ✅ |
+| Engine — mlx_vlm.server | REQ-001, REQ-004, REQ-005 | ✅ |
+| Engine — llama.cpp | REQ-001b | ✅ |
+| Embedding — FastAPI | REQ-006, REQ-032 | ✅ |
+| Scripts — operations | REQ-020, REQ-021, REQ-023 | ✅ |
+| Scripts — benchmark | REQ-022, REQ-028 | ✅ |
+| Scripts — versioning | REQ-024 | ✅ |
+| Data — SQLite | REQ-025 | ✅ |
+| Data — history | REQ-026 | ✅ |
+| MedGemma | REQ-029 | ✅ |
+| Mimir integration | REQ-030, REQ-031 | ✅ |

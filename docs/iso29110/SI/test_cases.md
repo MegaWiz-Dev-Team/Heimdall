@@ -6,9 +6,9 @@
 | Field | Value |
 |:--|:--|
 | **Document ID** | SI-TST-001 |
-| **Version** | 1.0 |
-| **Last Updated** | 2026-03-03 |
-| **Status** | ✅ Updated for Option A |
+| **Version** | 2.0 |
+| **Last Updated** | 2026-03-13 |
+| **Status** | ✅ Updated for v0.4.0 |
 
 ---
 
@@ -39,7 +39,7 @@
 
 | Test ID | Requirement | Description | Status |
 |:--|:--|:--|:--|
-| IT-001 | REQ-001, REQ-010 | Client → Heimdall → mlx_lm (chat completion) | ✅ Pass |
+| IT-001 | REQ-001, REQ-010 | Client → Heimdall → backend (chat completion) | ✅ Pass |
 | IT-003 | REQ-015 | SSE streaming through gateway | ✅ Pass |
 
 ---
@@ -50,8 +50,10 @@
 |:--|:--|:--|:--|
 | ST-001 | REQ-004 | `GET /v1/models` → 200 + model list | ✅ Pass |
 | ST-002 | REQ-004 | `POST /v1/chat/completions` → 200 + AI response | ✅ Pass |
-| ST-003 | REQ-005 | `POST /v1/chat/completions` stream=true → SSE chunks | ✅ Pass |
+| ST-003 | REQ-005 | `POST /v1/chat/completions` stream=true → SSE | ✅ Pass |
 | ST-004 | REQ-016 | `GET /metrics` → Prometheus format | ✅ Pass |
+| ST-005 | REQ-017 | `GET /api-spec` → OpenAPI 3.1 JSON | ✅ Pass |
+| ST-006 | REQ-018 | `GET /docs` → Scalar UI HTML | ✅ Pass |
 
 ---
 
@@ -59,9 +61,10 @@
 
 | Test ID | Requirement | Description | Status |
 |:--|:--|:--|:--|
-| BT-001 | NFR-001 | Gateway latency overhead | ⬜ Pending hw |
-| BT-002 | NFR-004 | Time to First Token (TTFT) | ✅ Script ready |
-| BT-003 | — | Tokens per Second (TPS) | ✅ Script ready |
+| BT-001 | NFR-001 | Gateway latency overhead | ✅ < 1ms |
+| BT-002 | NFR-004 | Time to First Token (TTFT) | ✅ Measured |
+| BT-003 | — | Tokens per Second (TPS) | ✅ Measured |
 | BT-004 | NFR-003 | Concurrent throughput | ⬜ Pending |
-| BT-005 | NFR-002 | Memory usage | ✅ Script ready |
-| BT-006 | — | Multi-model comparison report | ✅ Script ready |
+| BT-005 | NFR-002 | Memory usage | ✅ Measured |
+| BT-006 | — | Multi-model comparison report | ✅ HTML generated |
+| BT-MED-001 | REQ-029 | MedGemma medical benchmark | ✅ Done |
