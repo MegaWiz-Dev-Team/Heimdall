@@ -36,6 +36,7 @@ metrics-exporter-prometheus = "0.16"
 # Streaming
 futures = "0.3"
 bytes = "1"
+sysinfo = "0.38.4"
 
 [dev-dependencies]
 # Testing

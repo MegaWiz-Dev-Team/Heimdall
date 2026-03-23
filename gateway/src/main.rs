@@ -3,7 +3,7 @@ mod config;
 mod health;
 mod metrics_handler;
 mod proxy;
-
+mod gpu;
 use axum::{
     Router,
     middleware,
@@ -64,6 +64,7 @@ async fn main() {
         // Health & metrics
         .merge(health::routes())
         .merge(metrics_handler::routes(prometheus_handle))
+        .merge(gpu::routes())
         // OpenAI-compatible API proxy
         .merge(proxy::routes())
         // Middleware

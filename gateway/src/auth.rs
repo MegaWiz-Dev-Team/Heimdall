@@ -20,7 +20,7 @@ pub async fn auth_middleware(
 ) -> Result<Response, StatusCode> {
     // Skip auth for health and metrics endpoints
     let path = request.uri().path();
-    if path == "/health" || path == "/metrics" || path == "/ready" {
+    if path == "/health" || path == "/metrics" || path == "/ready" || path == "/api/gpu" {
         return Ok(next.run(request).await);
     }
 
