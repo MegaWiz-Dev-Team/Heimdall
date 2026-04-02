@@ -71,6 +71,13 @@ curl http://localhost:8080/v1/chat/completions \
 ./scripts/stop.sh
 ```
 
+## API Documentation
+
+Heimdall provides interactive API documentation out-of-the-box (OpenAPI 3.1):
+
+- **Scalar UI**: [http://localhost:8080/docs](http://localhost:8080/docs) (Interactive Explorer)
+- **OpenAPI JSON**: [http://localhost:8080/api-spec](http://localhost:8080/api-spec)
+
 ## Configuration
 
 Edit `.env` to customize:
