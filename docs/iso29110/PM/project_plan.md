@@ -198,6 +198,18 @@
 
 ---
 
+### ⬜ Sprint 9 — Native MLX Rust Backend (Target: Q3 2026)
+
+> เป้าหมาย: ทดแทน Python Engine ด้วย `mlx-rs` เพื่อลด Memory footprint และสร้าง Single Binary Gateway
+
+| ID | Task | Priority | Est. |
+|:--|:--|:--|:--|
+| WBS-026 | Research and prototype `mlx-rs` binding | 🟡 MED | 4 hr |
+| WBS-027 | Integrate Rust engine natively into Heimdall proxy | 🔴 HIGH | 8 hr |
+| WBS-028 | Single binary deployment pipeline | 🟡 MED | 3 hr |
+
+---
+
 ## 6. Sprint Summary
 
 | Sprint | Duration | Focus | Status |
@@ -210,6 +222,8 @@
 | **Sprint 5** | 1 day | API Docs + MedGemma | ✅ Done |
 | **Sprint 6** | 1 day | Mimir Integration | ✅ Done |
 | **Sprint 7** | TBD | vLLM + Production | ⬜ Planned |
+| **Sprint 8** | 1 day | Open-Source Hardening | ✅ Done |
+| **Sprint 9** | TBD | Native MLX Rust (`mlx-rs`) | ⬜ Planned |
 
 ---
 
@@ -235,3 +249,5 @@
 | M6: API Docs + MedGemma | S5 | 2026-03-04 | ✅ Done |
 | M7: Mimir Integration | S6 | 2026-03-04 | ✅ Done |
 | M8: vLLM + Production | S7 | 2026-04 | ⬜ Planned |
+| M9: Open-Source Status | S8 | 2026-04-02 | ✅ Done |
+| M10: Native MLX Rust | S9 | Q3 2026 | ⬜ Planned |
