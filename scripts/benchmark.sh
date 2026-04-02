@@ -74,7 +74,12 @@ check_server() {
 }
 
 get_available_models() {
-    curl -s "${BASE_URL}/v1/models" 2>/dev/null | python3 -c "
+    local auth_args=()
+    if [ -n "${API_KEYS:-}" ]; then
+        local first_key=$(echo "$API_KEYS" | cut -d',' -f1)
+        auth_args=("-H" "Authorization: Bearer ${first_key}")
+    fi
+    curl -s "${auth_args[@]}" "${BASE_URL}/v1/models" 2>/dev/null | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
@@ -93,10 +98,17 @@ run_single_request() {
     local prompt="$2"
     local max_tokens="${3:-100}"
 
+    local auth_args=()
+    if [ -n "${API_KEYS:-}" ]; then
+        local first_key=$(echo "$API_KEYS" | cut -d',' -f1)
+        auth_args=("-H" "Authorization: Bearer ${first_key}")
+    fi
+
     local response
     response=$(curl -s -w "\n%{time_starttransfer}|%{time_total}" \
         "${BASE_URL}/v1/chat/completions" \
         -H "Content-Type: application/json" \
+        "${auth_args[@]}" \
         -d "{
             \"model\": \"${model}\",
             \"messages\": [{\"role\": \"user\", \"content\": \"${prompt}\"}],
@@ -182,7 +194,7 @@ benchmark_model() {
     done
 
     # Output results as single-line JSON arrays (for python to parse)
-    echo "MODEL_DATA|${model}|$(IFS=,; echo "${SHORT_RESULTS[*]}")|$(IFS=,; echo "${MEDIUM_RESULTS[*]}")|$(IFS=,; echo "${LONG_RESULTS[*]}")"
+    echo "MODEL_DATA###${model}###$(IFS=,; echo "${SHORT_RESULTS[*]}")###$(IFS=,; echo "${MEDIUM_RESULTS[*]}")###$(IFS=,; echo "${LONG_RESULTS[*]}")"
 }
 
 # ============================================
@@ -227,9 +239,9 @@ ALL_MODEL_DATA=()
 for model in "${MODELS[@]}"; do
     output=$(benchmark_model "$model")
     # Print non-data lines to terminal
-    echo "$output" | grep -v "^MODEL_DATA|"
+    echo "$output" | grep -v "^MODEL_DATA###"
     # Capture data line
-    data_line=$(echo "$output" | grep "^MODEL_DATA|" || true)
+    data_line=$(echo "$output" | grep "^MODEL_DATA###" || true)
     if [ -n "$data_line" ]; then
         ALL_MODEL_DATA+=("$data_line")
     fi
@@ -245,7 +257,11 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 # ============================================
 
 # Pass all model data to python
-JOINED_DATA=$(printf '%s\n' "${ALL_MODEL_DATA[@]}")
+if [ ${#ALL_MODEL_DATA[@]} -eq 0 ]; then
+    JOINED_DATA=""
+else
+    JOINED_DATA=$(printf '%s\n' "${ALL_MODEL_DATA[@]}")
+fi
 
 python3 -c "
 import json, sys
@@ -323,29 +339,31 @@ for line in raw_lines:
 # Simpler approach: re-read from the structured line
 models_data = {}
 for line in raw_lines:
-    if not line.startswith('MODEL_DATA|'):
+    if not line.startswith('MODEL_DATA###'):
         continue
-    # Split: MODEL_DATA | model | short_csv | medium_csv | long_csv
-    _, model_name, short_csv, medium_csv, long_csv = line.split('|', 4)
+    
+    parts = line.split('###')
+    if len(parts) >= 5:
+        model_name = parts[1]
+        short_csv = parts[2]
+        medium_csv = parts[3]
+        long_csv = parts[4]
 
-    # But each csv item contains pipes! e.g. '0.1|0.5|20|5|40.0,0.2|0.6|20|5|33.3'
-    # So short_csv = '0.1|0.5|20|5|40.0,0.2|0.6|20|5|33.3' - this is fine for parse_results
+        short = parse_results(short_csv)
+        medium = parse_results(medium_csv)
+        long = parse_results(long_csv)
 
-    short = parse_results(short_csv)
-    medium = parse_results(medium_csv)
-    long = parse_results(long_csv)
+        model_short = model_name.split('/')[-1] if '/' in model_name else model_name
 
-    model_short = model_name.split('/')[-1] if '/' in model_name else model_name
-
-    models_data[model_name] = {
-        'name': model_name,
-        'short_name': model_short,
-        'tests': {
-            'short': {'name': 'Short Prompt (TTFT)', 'max_tokens': 20, **calc_stats(short)},
-            'medium': {'name': 'Medium Generation', 'max_tokens': 200, **calc_stats(medium)},
-            'long': {'name': 'Long Generation', 'max_tokens': 500, **calc_stats(long)}
+        models_data[model_name] = {
+            'name': model_name,
+            'short_name': model_short,
+            'tests': {
+                'short': {'name': 'Short Prompt (TTFT)', 'max_tokens': 20, **calc_stats(short)},
+                'medium': {'name': 'Medium Generation', 'max_tokens': 200, **calc_stats(medium)},
+                'long': {'name': 'Long Generation', 'max_tokens': 500, **calc_stats(long)}
+            }
         }
-    }
 
 report = {
     'timestamp': '$(date -u +%Y-%m-%dT%H:%M:%SZ)',
