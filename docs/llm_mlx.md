@@ -67,6 +67,7 @@ With 64GB of Unified Memory, this machine can handle almost any open-source mode
 | Model Category | Recommended Model ID | Est. RAM Usage (4-bit) | Description |
 | :--- | :--- | :--- | :--- |
 | **Qwen 3.5 (New)** | `mlx-community/Qwen3.5-35B-A3B-Instruct-4bit` | ~20 GB | Latest MoE model. Extreme speed & intelligence. |
+| **Qwen 3.5 Opus** | `paripolt/Qwen3.5-27B-Opus-Reasoning-MLX-4bit` | ~16 GB | Brilliant dense reasoning tailored for Apple Silicon (fast TTFT). |
 | **Qwen 3.5 (Max)** | `mlx-community/Qwen3.5-122B-A10B-Instruct-4bit`| ~60 GB | Most powerful Qwen 3.5. Uses almost all RAM. |
 | **State-of-the-Art** | `mlx-community/Llama-3.3-70B-Instruct-4bit` | ~40 GB | Equivalent to GPT-4o. Best for reasoning. |
 | **Logic & Coding** | `mlx-community/DeepSeek-R1-Distill-Llama-70B-4bit` | ~40 GB | Specialized in math, logic, and reasoning. |

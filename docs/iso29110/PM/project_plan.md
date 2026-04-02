@@ -182,6 +182,22 @@
 
 ---
 
+### ✅ Sprint 8 — Open-Source Hardening (2026-04-02) `DONE`
+
+> เป้าหมาย: Prepare repository for public release (Security + Tooling)
+
+| ID | Task | Status |
+|:--|:--|:--|
+| WBS-025a | Fix `benchmark.sh` parsing and authorization flaws | ✅ |
+| WBS-025b | Remove personal Mac SSD paths from conversions | ✅ |
+| WBS-025c | Create robust Hugging Face `upload_to_hf.py` script | ✅ |
+| WBS-025d | Benchmark `Qwen3.5-27B-Opus-Reasoning` & update Docs | ✅ |
+| WBS-025e | Establish `CHANGELOG.md` and bump `v0.2.0` | ✅ |
+
+**Deliverables**: Clean scripts, comprehensive documentation updates, Public release ready.
+
+---
+
 ## 6. Sprint Summary
 
 | Sprint | Duration | Focus | Status |

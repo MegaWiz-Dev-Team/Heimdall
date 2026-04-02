@@ -28,6 +28,7 @@
 |:--|:--|:--|:--|
 | ⭐⚡ `mlx-community/Qwen3.5-35B-A3B-Instruct-4bit` | ~20 GB | MoE | **Default** — เร็วมาก, ฉลาด, MoE ใช้ RAM น้อย |
 | ⚡ `mlx-community/Qwen3.5-122B-A10B-Instruct-4bit` | ~60 GB | MoE | ตัวใหญ่สุด — ใช้เกือบเต็ม RAM |
+| ⭐ `paripolt/Qwen3.5-27B-Opus-Reasoning-MLX-4bit` | ~16 GB | Dense | **Recommended** - สุดยอดความฉลาด Reasoning ดีมาก, TTFT เร็ว |
 | `mlx-community/Qwen2.5-72B-Instruct-4bit` | ~42 GB | Dense | Thai ดี, reasoning ดี |
 | `mlx-community/Qwen2.5-32B-Instruct-4bit` | ~18 GB | Dense | สมดุลขนาด/คุณภาพ |
 | `mlx-community/Qwen2.5-14B-Instruct-4bit` | ~8 GB | Dense | เบา, ตอบเร็ว |
