@@ -14,6 +14,21 @@ Heimdall is a high-performance LLM gateway built in Rust (Axum + Tokio) that pro
 - 🧮 **MLX Embedding server** — BAAI/bge-m3 for vector embeddings
 - 💾 **SQLite persistence** — Benchmark history and model catalog
 
+## Why Heimdall?
+
+While there are many AI proxies and local runners available, Heimdall fills a specific niche for enterprise-grade Apple Silicon deployments:
+
+- **vs. LiteLLM**: Heimdall is written in Rust for bare-metal performance with zero Python-GIL bottlenecks at the gateway layer, optimizing local network traffic.
+- **vs. Ollama / LM Studio**: Ollama is a fantastic model runner (which Heimdall can interface with), but Heimdall acts as an overarching **API Gateway** capable of load-balancing, enforcing API keys, and unifying models running across MLX, Llama.cpp, and vLLM simultaneously.
+- **vs. LocalAI**: Heimdall focuses strictly on extracting maximum unified-memory bandwidth from Mac M-Series chips through deep MLX native integrations, providing the ultimate environment for reasoning models like `Qwen3.5-Opus`.
+
+## Key Use Cases
+
+1. **Local Drop-in Replacement for OpenAI**: Point your Cursor IDE, LangChain, or agentic applications to `http://localhost:8080/v1` and use world-class models on your Mac for free, completely offline.
+2. **Private RAG Ecosystem**: Built-in endpoints for both LLM generation (`:8081`) and Embeddings (`:8001`) make Heimdall the perfect foundation for privacy-focused document retrieval systems.
+3. **The Ultimate Mac AI Router**: Consolidate disparate backend inference servers (MLX, Ollama, vLLM) behind a single unified, secure, API-Key-protected endpoint.
+4. **Hardware Benchmarking**: Analyze the true capability of your M-Series chip utilizing the integrated `benchmark.sh` generation reports and SQLite persistence tracking.
+
 ## Asgard Port Assignments
 
 > Full port map: [Asgard Port Allocation](https://github.com/megacare-dev/Asgard/blob/main/docs/technical/port-allocation-startup.md)
