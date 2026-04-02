@@ -1,4 +1,5 @@
 # 🛡️ Heimdall — LLM Gateway
+![Version](https://img.shields.io/badge/version-0.2.0-blue.svg) ![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg) ![Platform](https://img.shields.io/badge/platform-macOS_Apple_Silicon-lightgrey.svg) ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 > Part of the [Asgard AI Platform](https://github.com/megacare-dev/Asgard)
 
@@ -95,16 +96,29 @@ Heimdall provides interactive API documentation out-of-the-box (OpenAPI 3.1):
 
 ## Configuration
 
-Edit `.env` to customize:
+Customizing Heimdall is handled entirely through the `.env` file at the root of the project.
 
+### 1. Routing Setup (Gateway & Destination)
+Control where Heimdall listens and where it sends traffic:
 ```env
-GATEWAY_PORT=8080          # Gateway listen port
-BACKEND_PORT=8081          # MLX backend port
-BACKEND_ENGINE=mlx         # mlx | llama.cpp | ollama
-LLM_MODEL=mlx-community/Qwen3.5-9B-MLX-4bit
-EMBEDDING_MODEL=BAAI/bge-m3
-EMBEDDING_PORT=8001
+# --- Gateway Configuration (The Front Door) ---
+HOST=0.0.0.0               # Allow external LAN access
+GATEWAY_PORT=8080          # Heimdall's exposed port
+
+# --- Backend Configuration (The Destination) ---
+BACKEND_HOST=127.0.0.1     # Destination engine IP
+BACKEND_PORT=8081          # Destination engine port (e.g., MLX or Ollama)
 ```
+
+### 2. Authentication (API Keys)
+Heimdall includes zero-cost, in-memory API key validation. 
+```env
+# Comma-separated list of allowed Bearer tokens
+API_KEYS=sk-mimir-vip-1234,sk-dev-admin-9999
+```
+* **Enabled**: By providing keys, Heimdall rejects unauthorized requests instantly.
+* **Disabled**: By commenting out or leaving `API_KEYS` empty, Heimdall runs as a public API.
+
 
 ## Benchmarks
 
@@ -136,6 +150,17 @@ Client → [:8080] Heimdall Gateway (Rust/Axum)
               ├→ [:8084] vLLM     (Python/CUDA)   [reserved]
               └→ [:11434] Ollama  (Go)
 ```
+
+## Contributing
+
+We welcome contributions! If you'd like to improve Heimdall, please:
+1. Ensure your Rust environment (`1.75+`) is configured locally.
+2. Submit a Pull Request targeting the `main` branch.
+3. Check that your code compiles cleanly via `cargo check` and `cargo test`.
+
+## License
+
+This project is licensed under the **MIT License**. See the `LICENSE` file for full details.
 
 ---
 
