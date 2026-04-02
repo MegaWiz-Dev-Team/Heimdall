@@ -1,5 +1,5 @@
 # 🛡️ Heimdall — LLM Gateway
-![Version](https://img.shields.io/badge/version-0.2.0-blue.svg) ![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg) ![Platform](https://img.shields.io/badge/platform-macOS_Apple_Silicon-lightgrey.svg) ![License](https://img.shields.io/badge/license-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-0.2.0-blue.svg) ![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg) ![Platform](https://img.shields.io/badge/platform-macOS_Apple_Silicon-lightgrey.svg) ![License](https://img.shields.io/badge/license-AGPL_3.0-blue.svg)
 
 > Part of the [Asgard AI Platform](https://github.com/megacare-dev/Asgard)
 
@@ -160,7 +160,7 @@ We welcome contributions! If you'd like to improve Heimdall, please:
 
 ## License
 
-This project is licensed under the **MIT License**. See the `LICENSE` file for full details.
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. See the `LICENSE` file for full details.
 
 ---
 
