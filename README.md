@@ -148,9 +148,10 @@ python scripts/upload_to_hf.py --model-dir ./models/MyModel --repo-id MegaWizCo/
 Client → [:8080] Heimdall Gateway (Rust/Axum)
               ├→ [:8081] mlx_lm    (Python/MLX)
               ├→ [:8082] mlx_vlm   (Python/MLX)  [reserved]
-              ├→ [:8083] llama.cpp (C++)          [reserved]
-              ├→ [:8084] vLLM     (Python/CUDA)   [reserved]
-              └→ [:11434] Ollama  (Go)
+              ├→ [:8083] llama.cpp (C++)         [reserved]
+              ├→ [:8084] vLLM      (Python/CUDA) [reserved]
+              ├→ [:8085] Flash-MoE (SSD/MLX)     [experimental]
+              └→ [:11434] Ollama   (Go)
 ```
 
 ## Contributing
