@@ -61,6 +61,7 @@ curl http://localhost:8080/v1/models
 
 # Chat completion
 curl http://localhost:8080/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY_HERE" \
   -H "Content-Type: application/json" \
   -d '{"model":"auto","messages":[{"role":"user","content":"Hello!"}]}'
 ```
@@ -89,6 +90,18 @@ EMBEDDING_PORT=8001
 ./scripts/benchmark.sh              # Run benchmarks
 ./scripts/benchmark_history.sh      # View historical results
 open reports/                       # HTML reports
+```
+
+## Open-Source Deployment Tools
+
+Heimdall includes utilities for converting and uploading MLX models for seamless integration with the open-source community:
+
+```bash
+# Convert a Hugging Face model natively to MLX 4-bit safely respecting cache logic:
+./scripts/convert_qwen_27b.sh
+
+# Upload your MLX compiled model securely to your Hugging Face Organization:
+python scripts/upload_to_hf.py --model-dir ./models/MyModel --repo-id MegaWizCo/MyModel
 ```
 
 ## Architecture
