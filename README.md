@@ -8,11 +8,13 @@ Heimdall is a high-performance LLM gateway built in Rust (Axum + Tokio) that pro
 ## Features
 
 - 🔄 **Multi-backend routing** — MLX, llama.cpp, Ollama, vLLM
-- 🔐 **API Key authentication** — Bearer token + API key validation
-- 📊 **Prometheus metrics** — Request latency, token usage, model stats
-- 🌊 **SSE streaming** — Real-time token streaming
+- 🔐 **API Key authentication** — Bearer token validation with in-memory Rust speed
+- 📊 **Prometheus metrics** — Request latency, token usage, auth tracking
+- 🌊 **Zero-copy SSE streaming** — Real-time token streaming without memory bloat
+- 📖 **Interactive API Docs** — Out-of-the-box OpenAPI 3.1 spec & Scalar Explorer UI
 - 📈 **Benchmark suite** — Automated performance testing with historical tracking
-- 🧮 **MLX Embedding server** — BAAI/bge-m3 for vector embeddings
+- 🧮 **MLX Embedding server** — Optimized `bge-m3` for vector generation
+- 🛠️ **Deployment Utilities** — Built-in native MLX converters and Hugging Face publishers
 - 💾 **SQLite persistence** — Benchmark history and model catalog
 
 ## Why Heimdall?
