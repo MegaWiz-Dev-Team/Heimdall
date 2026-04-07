@@ -25,9 +25,16 @@ async fn proxy_handler(
 ) -> Result<Response, StatusCode> {
     let start = std::time::Instant::now();
     let path = uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
-    // Forward the path as-is to the backend.
-    // mlx_lm expects /v1/chat/completions, mlx_vlm also accepts /v1/.
-    let backend_url = format!("{}{}", state.config.backend_url(), path);
+    
+    // Choose target backend based on path
+    let target_base_url = if path.starts_with("/v1/embeddings") || path.starts_with("/v1/rerank") || path.starts_with("/rerank") {
+        state.config.embedding_url()
+    } else {
+        state.config.backend_url()
+    };
+    
+    // Forward the path as-is to the chosen backend.
+    let backend_url = format!("{}{}", target_base_url, path);
 
     tracing::info!("{} {} → {}", method, uri, backend_url);
 
