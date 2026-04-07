@@ -10,6 +10,10 @@ pub struct AppConfig {
     pub backend_host: String,
     /// Backend engine port
     pub backend_port: u16,
+    /// Embedding server host
+    pub embedding_host: String,
+    /// Embedding server port
+    pub embedding_port: u16,
     /// API keys (comma-separated)
     pub api_keys: Vec<String>,
     /// Whether auth is enabled
@@ -35,9 +39,15 @@ impl AppConfig {
             backend_host: std::env::var("BACKEND_HOST")
                 .unwrap_or_else(|_| "127.0.0.1".into()),
             backend_port: std::env::var("BACKEND_PORT")
-                .unwrap_or_else(|_| "8000".into())
+                .unwrap_or_else(|_| "8081".into())
                 .parse()
                 .expect("BACKEND_PORT must be a number"),
+            embedding_host: std::env::var("EMBEDDING_HOST")
+                .unwrap_or_else(|_| "127.0.0.1".into()),
+            embedding_port: std::env::var("EMBEDDING_PORT")
+                .unwrap_or_else(|_| "8001".into())
+                .parse()
+                .expect("EMBEDDING_PORT must be a number"),
             api_keys,
             auth_enabled,
         }
@@ -46,6 +56,11 @@ impl AppConfig {
     /// Get the full backend URL
     pub fn backend_url(&self) -> String {
         format!("http://{}:{}", self.backend_host, self.backend_port)
+    }
+
+    /// Get the full embedding server URL
+    pub fn embedding_url(&self) -> String {
+        format!("http://{}:{}", self.embedding_host, self.embedding_port)
     }
 }
 

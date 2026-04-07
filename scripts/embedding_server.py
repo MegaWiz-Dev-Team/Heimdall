@@ -36,8 +36,25 @@ registry_key = REGISTRY_MAP.get(MODEL_NAME, MODEL_NAME)
 log.info(f"Loading embedding model: {MODEL_NAME} (registry: {registry_key})")
 try:
     from mlx_embedding_models.embedding import EmbeddingModel
+    import torch
+    from transformers import AutoModelForSequenceClassification, AutoTokenizer
+    
     model = EmbeddingModel.from_registry(registry_key)
     log.info(f"✅ Model loaded: {MODEL_NAME}")
+
+    # Load Reranker Model
+    RERANKER_NAME = os.environ.get("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
+    log.info(f"Loading reranker model: {RERANKER_NAME}")
+    rerank_tokenizer = AutoTokenizer.from_pretrained(RERANKER_NAME)
+    rerank_model = AutoModelForSequenceClassification.from_pretrained(RERANKER_NAME)
+    try:
+        device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+        rerank_model.to(device)
+    except:
+        device = "cpu"
+        rerank_model.to(device)
+    rerank_model.eval()
+    log.info(f"✅ Reranker model loaded on {device}: {RERANKER_NAME}")
 
     # Patch for transformers >= 5.0 compatibility
     # transformers 5.x removed batch_encode_plus from PreTrainedTokenizerFast
@@ -73,15 +90,44 @@ except Exception as e:
 class EmbeddingHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
-            self._json_response({"status": "ok", "model": MODEL_NAME})
+            self._json_response({"status": "ok", "embedding_model": MODEL_NAME, "reranker_model": "BAAI/bge-reranker-v2-m3"})
         else:
             self._json_response({"error": "Not found"}, 404)
 
     def do_POST(self):
         if self.path == "/v1/embeddings":
             self._handle_embeddings()
+        elif self.path == "/v1/rerank" or self.path == "/rerank":
+            self._handle_rerank()
         else:
             self._json_response({"error": "Not found"}, 404)
+
+    def _handle_rerank(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(content_length))
+            query = body.get("query", "")
+            texts = body.get("texts", [])
+            if not query or not texts:
+                return self._json_response({"error": "Missing query or texts"}, 400)
+
+            pairs = [[query, text] for text in texts]
+            
+            import torch
+            with torch.no_grad():
+                inputs = rerank_tokenizer(pairs, padding=True, truncation=True, return_tensors='pt', max_length=512).to(device)
+                scores = rerank_model(**inputs, return_dict=True).logits.view(-1,).float()
+            
+            scores_list = scores.cpu().tolist()
+            results = [{"index": i, "score": score} for i, score in enumerate(scores_list)]
+            # TEI default is to sort descending by score
+            results.sort(key=lambda x: x["score"], reverse=True)
+            
+            self._json_response(results)
+            log.info(f"Reranked {len(texts)} texts")
+        except Exception as e:
+            log.error(f"Rerank error: {e}")
+            self._json_response({"error": str(e)}, 500)
 
     def _handle_embeddings(self):
         try:
