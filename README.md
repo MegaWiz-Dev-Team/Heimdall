@@ -1,5 +1,5 @@
 # 🛡️ Heimdall — LLM Gateway
-![Version](https://img.shields.io/badge/version-0.2.0-blue.svg) ![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg) ![Platform](https://img.shields.io/badge/platform-macOS_Apple_Silicon-lightgrey.svg) ![License](https://img.shields.io/badge/license-AGPL_3.0-blue.svg)
+![Version](https://img.shields.io/badge/version-0.3.0-blue.svg) ![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg) ![Platform](https://img.shields.io/badge/platform-macOS_Apple_Silicon-lightgrey.svg) ![License](https://img.shields.io/badge/license-AGPL_3.0-blue.svg)
 
 > Part of the [Asgard AI Platform](https://github.com/megacare-dev/Asgard)
 
@@ -13,7 +13,7 @@ Heimdall is a high-performance LLM gateway built in Rust (Axum + Tokio) that pro
 - 🌊 **Zero-copy SSE streaming** — Real-time token streaming without memory bloat
 - 📖 **Interactive API Docs** — Out-of-the-box OpenAPI 3.1 spec & Scalar Explorer UI
 - 📈 **Benchmark suite** — Automated performance testing with historical tracking
-- 🧮 **MLX Embedding server** — Optimized `bge-m3` for vector generation
+- 🧮 **Native Rust Embedding Engine** — Optimized `bge-m3` using FastEmbed & ONNX Runtime without Python scripts
 - 🛠️ **Deployment Utilities** — Built-in native MLX converters and Hugging Face publishers
 - 💾 **SQLite persistence** — Benchmark history and model catalog
 
@@ -38,12 +38,12 @@ While there are many AI proxies and local runners available, Heimdall fills a sp
 
 | Port | Service | Description |
 |------|---------|-------------|
-| `8080` | **Heimdall Gateway** | Main API endpoint |
+| `8080` | **Heimdall Gateway** | Main API endpoint / Native Rust Embedding (Batch) |
 | `8081` | mlx_lm | Text LLM backend |
 | `8082` | mlx_vlm | Vision LLM backend *(reserved)* |
 | `8083` | llama.cpp | GGUF backend *(reserved)* |
 | `8084` | vLLM | NVIDIA backend *(reserved)* |
-| `8001` | Embedding Server | MLX bge-m3 |
+| `8089` | llama.cpp | Llama Fast Embeddings (Chat) |
 | `11434` | Ollama | Managed models |
 
 ## Quick Start
@@ -59,17 +59,37 @@ cp .env.example .env
 ./scripts/setup.sh
 ```
 
-### 2. Start
+### 2. Production Deployment (Daemons)
+Heimdall components run as native OS Background Services (`launchd` on macOS). This prevents overlapping ports, terminal detachment issues, and allows for clean auto-restarts.
+
+To install or reinstall Heimdall as a system daemon, run:
 ```bash
-./scripts/start.sh
+./scripts/install_daemons.sh
 ```
 
-This starts (in order):
-1. **MLX Backend** (`:8081`) — loads the LLM model
-2. **Embedding Server** (`:8001`) — BAAI/bge-m3
-3. **Rust Gateway** (`:8080`) — proxies to backends
+**Core Services Configured:**
+1. **Rust Gateway** (`:8080`) — Primary API Gateway and reverse proxy. Managed by `launchd`.
+2. **Embeddings Engine** (`:8001`, `:8089`) — Dual embedding setups. Managed by `launchd`.
 
-### 3. Test
+> [!IMPORTANT]
+> **Text Generation Engines (Port 8081)** are **INTENTIONALLY DECOUPLED** from `launchd`. 
+> Depending on your hardware and requirements, you must manually run your engine of choice:
+> - **Heavy Workloads (31B+, MoE)**: Use `Mimir/scripts/run_flash_moe.sh` to run the C++ Native Engine on `8081`. 
+> - **Light/Research Workloads**: You can start Ollama or other local servers mapping backwards to `8081`.
+
+### 3. Service Management
+Because Heimdall Gateway is a daemon, legacy scripts like `start.sh` and `stop.sh` are **deprecated** and will throw fatal errors to prevent system corruption.
+
+Use the native OS tools to manage the Gateway:
+```bash
+# Stop Gateway
+launchctl stop com.asgard.heimdall-gateway
+
+# Start Gateway
+launchctl start com.asgard.heimdall-gateway
+```
+
+### 4. Test
 ```bash
 # Health check
 curl http://localhost:8080/health
@@ -82,11 +102,6 @@ curl http://localhost:8080/v1/chat/completions \
   -H "Authorization: Bearer YOUR_API_KEY_HERE" \
   -H "Content-Type: application/json" \
   -d '{"model":"auto","messages":[{"role":"user","content":"Hello!"}]}'
-```
-
-### 4. Stop
-```bash
-./scripts/stop.sh
 ```
 
 ## API Documentation
@@ -124,10 +139,16 @@ API_KEYS=sk-mimir-vip-1234,sk-dev-admin-9999
 
 ## Benchmarks
 
+Heimdall includes rigorous performance testing to validate inference throughput and latency.
+
 ```bash
-./scripts/benchmark.sh              # Run benchmarks
-./scripts/benchmark_history.sh      # View historical results
-open reports/                       # HTML reports
+# Run text generation benchmarks
+./scripts/benchmark.sh
+./scripts/benchmark_history.sh
+open reports/
+
+# Run hybrid embedding architecture benchmark (tests Rust ONNX vs MLX vs Llama.cpp)
+python3 scripts/benchmark_embedding.py
 ```
 
 ## Open-Source Deployment Tools
@@ -145,13 +166,14 @@ python scripts/upload_to_hf.py --model-dir ./models/MyModel --repo-id MegaWizCo/
 ## Architecture
 
 ```
-Client → [:8080] Heimdall Gateway (Rust/Axum)
-              ├→ [:8081] mlx_lm    (Python/MLX)
-              ├→ [:8082] mlx_vlm   (Python/MLX)  [reserved]
-              ├→ [:8083] llama.cpp (C++)         [reserved]
-              ├→ [:8084] vLLM      (Python/CUDA) [reserved]
-              ├→ [:8085] Flash-MoE (SSD/MLX)     [experimental]
-              └→ [:11434] Ollama   (Go)
+Client → [:8080] Heimdall Gateway (Rust/Axum) [Includes Native ONNX Embedding]
+              ├→ [:8081] mlx_lm         (Python/MLX)
+              ├→ [:8082] mlx_vlm        (Python/MLX)  [reserved]
+              ├→ [:8083] llama.cpp      (C++)         [reserved]
+              ├→ [:8084] vLLM           (Python/CUDA) [reserved]
+              ├→ [:8085] Flash-MoE      (SSD/MLX)     [experimental]
+              ├→ [:8089] llama-server   (C++)         [Fast Embeddings]
+              └→ [:11434] Ollama        (Go)
 ```
 
 ## Contributing

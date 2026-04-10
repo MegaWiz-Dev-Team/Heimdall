@@ -26,12 +26,8 @@ async fn proxy_handler(
     let start = std::time::Instant::now();
     let path = uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
     
-    // Choose target backend based on path
-    let target_base_url = if path.starts_with("/v1/embeddings") || path.starts_with("/v1/rerank") || path.starts_with("/rerank") {
-        state.config.embedding_url()
-    } else {
-        state.config.backend_url()
-    };
+    // All remaining /v1/* requests go to the LLM chat backend
+    let target_base_url = state.config.backend_url();
     
     // Forward the path as-is to the chosen backend.
     let backend_url = format!("{}{}", target_base_url, path);
@@ -46,6 +42,58 @@ async fn proxy_handler(
             return Err(StatusCode::BAD_REQUEST);
         }
     };
+
+    // Hot-swap logic: check if the request asks for a new MLX model
+    if path == "/chat/completions" || path == "/completions" || path == "/v1/chat/completions" || path == "/v1/completions" {
+        if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&body_bytes) {
+            if let Some(requested_model) = json.get("model").and_then(|m| m.as_str()) {
+                let current_model = {
+                    let lock = state.active_model.read().unwrap();
+                    (*lock).clone()
+                };
+
+                // Only perform hot-swap if the model is different and it is an MLX model or empty provider (so not natively ollama)
+                if requested_model != current_model && requested_model != "" {
+                    // We need to swap! Enter mutex to prevent race conditions.
+                    tracing::info!("🔄 Model swap requested: '{}' != '{}'", requested_model, current_model);
+                    let _guard = state.swap_lock.lock().await;
+
+                    // Double-check inside lock
+                    let current_model = {
+                        let lock = state.active_model.read().unwrap();
+                        (*lock).clone()
+                    };
+
+                    if requested_model != current_model {
+                        tracing::warn!("Executing hot-swap to {}...", requested_model);
+                        let output = tokio::process::Command::new("./scripts/hotswap.sh")
+                            .arg(requested_model)
+                            .current_dir(&state.config.project_dir)
+                            .output()
+                            .await;
+
+                        match output {
+                            Ok(out) if out.status.success() => {
+                                tracing::info!("✅ Hot-swap successful!");
+                                let mut lock = state.active_model.write().unwrap();
+                                *lock = requested_model.to_string();
+                            }
+                            Ok(out) => {
+                                let stderr = String::from_utf8_lossy(&out.stderr);
+                                let stdout = String::from_utf8_lossy(&out.stdout);
+                                tracing::error!("❌ Hot-swap script failed: {}\nStdout: {}", stderr, stdout);
+                                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+                            }
+                            Err(e) => {
+                                tracing::error!("❌ Failed to execute hot-swap script: {}", e);
+                                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // Build the proxied request
     let mut req_builder = state

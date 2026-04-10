@@ -18,6 +18,10 @@ pub struct AppConfig {
     pub api_keys: Vec<String>,
     /// Whether auth is enabled
     pub auth_enabled: bool,
+    /// Initially loaded LLM model
+    pub llm_model: String,
+    /// Project root directory
+    pub project_dir: String,
 }
 
 impl AppConfig {
@@ -50,6 +54,8 @@ impl AppConfig {
                 .expect("EMBEDDING_PORT must be a number"),
             api_keys,
             auth_enabled,
+            llm_model: std::env::var("LLM_MODEL").unwrap_or_else(|_| "".into()),
+            project_dir: std::env::var("PROJECT_DIR").unwrap_or_else(|_| "../".into()),
         }
     }
 

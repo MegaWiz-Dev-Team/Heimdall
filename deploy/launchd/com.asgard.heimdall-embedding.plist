@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.asgard.heimdall-embedding</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{PROJECT_DIR}}/.venv/bin/python</string>
+        <string>{{PROJECT_DIR}}/scripts/embedding_server.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>{{PROJECT_DIR}}</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>EMBEDDING_MODEL</key>
+        <string>BAAI/bge-m3</string>
+        <key>EMBEDDING_PORT</key>
+        <string>8001</string>
+        <key>RERANKER_MODEL</key>
+        <string>BAAI/bge-reranker-v2-m3</string>
+    </dict>
+
+    <!-- Auto-restart on crash -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <!-- Throttle restart: wait 10 seconds before restarting (model load time) -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <!-- Start automatically at login -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Logging -->
+    <key>StandardOutPath</key>
+    <string>{{PROJECT_DIR}}/logs/embedding-stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{PROJECT_DIR}}/logs/embedding-stderr.log</string>
+</dict>
+</plist>

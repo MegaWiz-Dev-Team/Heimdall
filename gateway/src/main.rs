@@ -1,4 +1,5 @@
 mod auth;
+mod embedding;
 mod config;
 mod health;
 mod metrics_handler;
@@ -20,6 +21,8 @@ use config::AppConfig;
 pub struct AppState {
     pub config: Arc<AppConfig>,
     pub http_client: reqwest::Client,
+    pub active_model: Arc<std::sync::RwLock<String>>,
+    pub swap_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 #[tokio::main]
@@ -54,9 +57,14 @@ async fn main() {
         .build()
         .expect("Failed to build HTTP client");
 
+    let active_model = Arc::new(std::sync::RwLock::new(config.llm_model.clone()));
+    let swap_lock = Arc::new(tokio::sync::Mutex::new(()));
+
     let state = AppState {
         config: Arc::new(config.clone()),
         http_client,
+        active_model,
+        swap_lock,
     };
 
     // Build router
@@ -65,7 +73,9 @@ async fn main() {
         .merge(health::routes())
         .merge(metrics_handler::routes(prometheus_handle))
         .merge(gpu::routes())
-        // OpenAI-compatible API proxy
+        // Native Rust embedding & reranking (handled before proxy)
+        .merge(embedding::routes())
+        // OpenAI-compatible API proxy (chat/completions, models, etc.)
         .merge(proxy::routes())
         // Middleware
         .layer(middleware::from_fn_with_state(
