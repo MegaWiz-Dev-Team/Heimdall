@@ -1,6 +1,6 @@
 [package]
 name = "heimdall-gateway"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 description = "Heimdall — Guardian of the LLM realm. Rust API Gateway proxying to vllm-mlx."
 license = "MIT"
@@ -37,6 +37,9 @@ metrics-exporter-prometheus = "0.16"
 futures = "0.3"
 bytes = "1"
 sysinfo = "0.38.4"
+
+# Native Embedding Engine (ONNX Runtime + CoreML on Apple Silicon)
+fastembed = "5.13"
 
 [dev-dependencies]
 # Testing

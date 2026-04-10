@@ -35,6 +35,7 @@ logs/
 
 # Model cache (too large for git)
 models/
+.fastembed_cache/
 *.bin
 *.safetensors
 *.gguf
