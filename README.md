@@ -5,6 +5,14 @@
 
 Heimdall is a high-performance LLM gateway built in Rust (Axum + Tokio) that provides a unified OpenAI-compatible API for multiple local LLM backends.
 
+### 🏥 Role in Multi-Agent Ecosystem
+
+> **LLM Gateway + Step-up Router (ยามเฝ้าประตู)** — Heimdall เป็นด่านหน้าที่ทุก Agent เรียกใช้ LLM ผ่าน โดยปกติ route ไปยังโมเดล Local (MedGemma / Qwen 3.5) แต่เมื่อเคสมีความอันตราย จะ **Step-up** ไปยัง Gemini 2.5 Pro เพื่อ Second Opinion
+>
+> **Guardrails:** G4 (Safety Filters, Temperature Clamp ≤ 0.3, Token Budget, Timeout)
+>
+> 📖 [Full Architecture →](https://github.com/MegaWiz-Dev-Team/Asgard/blob/main/docs/roadmap/MultiAgent_Architecture_Plan.md) | [Sprint Plan →](https://github.com/MegaWiz-Dev-Team/Asgard/blob/main/docs/roadmap/MultiAgent_Sprint_Plan.md)
+
 ## Features
 
 - 🔄 **Multi-backend routing** — MLX, llama.cpp, Ollama, vLLM
