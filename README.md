@@ -1,5 +1,5 @@
 # 🛡️ Heimdall — LLM Gateway
-![Version](https://img.shields.io/badge/version-0.3.0-blue.svg) ![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg) ![Platform](https://img.shields.io/badge/platform-macOS_Apple_Silicon-lightgrey.svg) ![License](https://img.shields.io/badge/license-AGPL_3.0-blue.svg)
+![Version](https://img.shields.io/badge/version-0.4.0-blue.svg) ![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg) ![Platform](https://img.shields.io/badge/platform-macOS_Apple_Silicon-lightgrey.svg) ![License](https://img.shields.io/badge/license-AGPL_3.0-blue.svg)
 
 > Part of the [Asgard AI Platform](https://github.com/megacare-dev/Asgard)
 
@@ -85,16 +85,30 @@ To install or reinstall Heimdall as a system daemon, run:
 > - **Heavy Workloads (31B+, MoE)**: Use `Mimir/scripts/run_flash_moe.sh` to run the C++ Native Engine on `8081`. 
 > - **Light/Research Workloads**: You can start Ollama or other local servers mapping backwards to `8081`.
 
-### 3. Service Management
-Because Heimdall Gateway is a daemon, legacy scripts like `start.sh` and `stop.sh` are **deprecated** and will throw fatal errors to prevent system corruption.
+### 3. Service & Model Management (Heimdall CLI)
+Heimdall includes a unified CLI `./heimdall` at the root of the project to efficiently manage models and daemons. Legacy scripts like `start.sh` and `stop.sh` are **deprecated**.
 
-Use the native OS tools to manage the Gateway:
 ```bash
-# Stop Gateway
-launchctl stop com.asgard.heimdall-gateway
+cd ~/Developer/Heimdall
 
-# Start Gateway
-launchctl start com.asgard.heimdall-gateway
+# Download a new model directly to the Heimdall Cache
+./heimdall pull mlx-community/Qwen3.5-35B-A3B-4bit
+
+# View all installed models across primary and external SSDs
+./heimdall ls
+
+# Permanently delete a model to free up space
+./heimdall rm mlx-community/Qwen3-0.6B-4bit
+
+# Start, Stop, or Restart the Heimdall background daemons
+./heimdall start
+./heimdall restart
+./heimdall stop
+```
+
+*Optional:* Make it globally accessible by linking it to your bin folder:
+```bash
+sudo ln -sf ~/Developer/Heimdall/heimdall /usr/local/bin/heimdall
 ```
 
 ### 4. Test

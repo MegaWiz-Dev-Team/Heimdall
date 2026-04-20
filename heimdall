@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ============================================
+# 🛡️ Heimdall Unified CLI
+# ============================================
+
+# Resolve symlink to get true SCRIPT_DIR
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+
+command=${1:-}
+if [ -n "$command" ]; then
+    shift
+fi
+
+case "$command" in
+  pull)
+    model_id=${1:-}
+    if [ -z "$model_id" ]; then
+      echo "❌ Usage: heimdall pull <model_id>"
+      echo "   Example: heimdall pull mlx-community/Qwen3.5-9B-MLX-4bit"
+      exit 1
+    fi
+    echo "⬇️ Pulling model '$model_id' via huggingface_hub..."
+    echo "--------------------------------------------------------"
+    
+    # Use python's huggingface_hub directly to ensure it works across all encodings
+    "$SCRIPT_DIR/.venv/bin/python" -c "from huggingface_hub import snapshot_download; snapshot_download('$model_id')"
+    
+    echo "--------------------------------------------------------"
+    echo "✅ Successfully pulled $model_id"
+    ;;
+    
+  list|ls)
+    "$SCRIPT_DIR/scripts/model_manager.sh" list
+    ;;
+    
+  status)
+    "$SCRIPT_DIR/scripts/model_manager.sh" status
+    ;;
+    
+  archive)
+    "$SCRIPT_DIR/scripts/model_manager.sh" archive "${1:-}"
+    ;;
+    
+  restore)
+    "$SCRIPT_DIR/scripts/model_manager.sh" restore "${1:-}"
+    ;;
+
+  rm)
+    "$SCRIPT_DIR/scripts/model_manager.sh" rm "${1:-}"
+    ;;
+    
+  start)
+    echo "🚀 Starting Heimdall Daemons..."
+    launchctl start com.asgard.heimdall-gateway 2>/dev/null || true
+    launchctl start com.asgard.heimdall-llama 2>/dev/null || true
+    launchctl start com.asgard.heimdall-embedding 2>/dev/null || true
+    echo "✅ Services started. Gateway running on Port 8080."
+    ;;
+    
+  stop)
+    echo "🛑 Stopping Heimdall Daemons..."
+    launchctl stop com.asgard.heimdall-gateway 2>/dev/null || true
+    launchctl stop com.asgard.heimdall-llama 2>/dev/null || true
+    launchctl stop com.asgard.heimdall-embedding 2>/dev/null || true
+    echo "✅ Services stopped."
+    ;;
+    
+  restart)
+    echo "🔄 Restarting Heimdall Gateway..."
+    launchctl stop com.asgard.heimdall-gateway 2>/dev/null || true
+    sleep 1
+    launchctl start com.asgard.heimdall-gateway 2>/dev/null || true
+    echo "✅ Gateway restarted."
+    ;;
+    
+    help|*)
+        echo "🛡️ Heimdall CLI (v0.4.0)"
+        echo "======================"
+    echo "Usage: heimdall <command> [args]"
+    echo ""
+    echo "Commands:"
+    echo "  pull <model_id>   Download a model from Hugging Face Hub (MLX/GGUF/PyTorch)"
+    echo "  list, ls          List all installed models in the cache"
+    echo "  status            Show storage usage across SSDs"
+    echo "  archive <model>   Move a model to the external SSD to free up space"
+    echo "  restore <model>   Move a model back to primary SSD for fast loading"
+    echo "  rm <model>        Permanently delete a model from all caches"
+    echo ""
+    echo "Daemon Management:"
+    echo "  start             Start all Heimdall OS Daemons (Gateway & Embedding)"
+    echo "  stop              Stop all Heimdall OS Daemons"
+    echo "  restart           Restart the Heimdall Gateway"
+    echo ""
+    ;;
+esac

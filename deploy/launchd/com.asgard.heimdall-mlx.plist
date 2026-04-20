@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.asgard.heimdall-mlx</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{PROJECT_DIR}}/.venv/bin/python</string>
+        <string>-m</string>
+        <string>mlx_lm.server</string>
+        <string>--model</string>
+        <string>mlx-community/gemma-4-26b-a4b-it-4bit</string>
+        <string>--port</string>
+        <string>8081</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>{{PROJECT_DIR}}</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>/Users/mimir</string>
+        <key>TOKENIZERS_PARALLELISM</key>
+        <string>false</string>
+    </dict>
+
+    <!-- Auto-restart on crash -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <!-- Model loading takes time, throttle restart to 30s -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <!-- Start automatically at login -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Logging -->
+    <key>StandardOutPath</key>
+    <string>{{PROJECT_DIR}}/logs/mlx-stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{PROJECT_DIR}}/logs/mlx-stderr.log</string>
+</dict>
+</plist>

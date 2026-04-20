@@ -4,14 +4,20 @@ mod config;
 mod health;
 mod metrics_handler;
 mod proxy;
+mod router;
+mod telemetry;
 mod gpu;
+mod pull;
 use axum::{
     Router,
     middleware,
+    routing::get,
+    response::Html,
 };
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
+use opentelemetry_otlp::WithExportConfig;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use config::AppConfig;
@@ -31,13 +37,26 @@ async fn main() {
     let _ = dotenvy::from_path("../.env");
     let _ = dotenvy::dotenv();
 
-    // Initialize tracing
+    // Initialize OpenTelemetry Tracing
+    let tracer = opentelemetry_otlp::new_pipeline()
+        .tracing()
+        .with_exporter(
+            opentelemetry_otlp::new_exporter()
+                .tonic()
+                .with_endpoint("http://otel-collector.infra.svc:4317"),
+        )
+        .install_batch(opentelemetry_sdk::runtime::Tokio)
+        .expect("Failed to initialize OTLP Tracer");
+
+    let telemetry_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| "heimdall_gateway=info,tower_http=info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
+        .with(telemetry_layer)
         .init();
 
     // Load config
@@ -75,8 +94,12 @@ async fn main() {
         .merge(gpu::routes())
         // Native Rust embedding & reranking (handled before proxy)
         .merge(embedding::routes())
+        // Model pull mechanism
+        .merge(pull::routes())
         // OpenAI-compatible API proxy (chat/completions, models, etc.)
         .merge(proxy::routes())
+        // Root HTML Dashboard
+        .route("/", get(|| async { Html(include_str!("index.html")) }))
         // Middleware
         .layer(middleware::from_fn_with_state(
             state.clone(),

@@ -22,6 +22,20 @@ pub struct AppConfig {
     pub llm_model: String,
     /// Project root directory
     pub project_dir: String,
+
+    // ── External Provider Keys (Centralized Secret Store) ──────────────
+    /// OpenRouter API key (fallback if X-Provider-Key header is not set)
+    pub openrouter_api_key: Option<String>,
+    /// OpenRouter base URL
+    pub openrouter_base_url: String,
+    /// Google Gemini API key
+    pub gemini_api_key: Option<String>,
+    /// Gemini OpenAI-compatible base URL
+    pub gemini_base_url: String,
+    /// OpenAI API key
+    pub openai_api_key: Option<String>,
+    /// OpenAI base URL
+    pub openai_base_url: String,
 }
 
 impl AppConfig {
@@ -56,6 +70,17 @@ impl AppConfig {
             auth_enabled,
             llm_model: std::env::var("LLM_MODEL").unwrap_or_else(|_| "".into()),
             project_dir: std::env::var("PROJECT_DIR").unwrap_or_else(|_| "../".into()),
+
+            // External providers
+            openrouter_api_key: std::env::var("OPENROUTER_API_KEY").ok().filter(|s| !s.is_empty()),
+            openrouter_base_url: std::env::var("OPENROUTER_BASE_URL")
+                .unwrap_or_else(|_| "https://openrouter.ai/api/v1".into()),
+            gemini_api_key: std::env::var("GEMINI_API_KEY").ok().filter(|s| !s.is_empty()),
+            gemini_base_url: std::env::var("GEMINI_BASE_URL")
+                .unwrap_or_else(|_| "https://generativelanguage.googleapis.com/v1beta/openai".into()),
+            openai_api_key: std::env::var("OPENAI_API_KEY").ok().filter(|s| !s.is_empty()),
+            openai_base_url: std::env::var("OPENAI_BASE_URL")
+                .unwrap_or_else(|_| "https://api.openai.com/v1".into()),
         }
     }
 
@@ -87,7 +112,7 @@ mod tests {
         assert_eq!(config.host, "0.0.0.0");
         assert_eq!(config.gateway_port, 3000);
         assert_eq!(config.backend_host, "127.0.0.1");
-        assert_eq!(config.backend_port, 8000);
+        assert_eq!(config.backend_port, 8081);
     }
 
     #[test]
@@ -121,6 +146,6 @@ mod tests {
         std::env::remove_var("BACKEND_HOST");
         std::env::remove_var("BACKEND_PORT");
         let config = AppConfig::from_env();
-        assert_eq!(config.backend_url(), "http://127.0.0.1:8000");
+        assert_eq!(config.backend_url(), "http://127.0.0.1:8081");
     }
 }

@@ -267,6 +267,43 @@ cmd_restore() {
     fi
 }
 
+cmd_remove() {
+    local model_name="${1:-}"
+    if [ -z "$model_name" ]; then
+        echo "❌ Usage: model_manager.sh rm <model-name>"
+        echo "   Example: model_manager.sh rm mlx-community/Qwen2.5-7B-Instruct-4bit"
+        exit 1
+    fi
+
+    local dir_name=$(model_name_to_dir "$model_name")
+    local src_internal="$INTERNAL_DIR/$dir_name"
+    local src_external="$EXTERNAL_DIR/$dir_name"
+    local found=0
+
+    echo ""
+    echo "🗑️  Removing model: $model_name"
+
+    if [ -d "$src_internal" ]; then
+        local size=$(du -sh "$src_internal" 2>/dev/null | awk '{print $1}')
+        rm -rf "$src_internal"
+        echo "   ✅ Removed from Internal SSD (freed $size)"
+        found=1
+    fi
+
+    if [ -n "$EXTERNAL_DIR" ] && [ -d "$EXTERNAL_DIR" ] && [ -d "$src_external" ]; then
+        local size=$(du -sh "$src_external" 2>/dev/null | awk '{print $1}')
+        rm -rf "$src_external"
+        echo "   ✅ Removed from External SSD (freed $size)"
+        found=1
+    fi
+
+    if [ $found -eq 0 ]; then
+        echo "   ❌ Model not found in any cache."
+        exit 1
+    fi
+    echo ""
+}
+
 cmd_help() {
     echo ""
     echo "🛡️ Heimdall Model Manager"
@@ -278,6 +315,7 @@ cmd_help() {
     echo "  status                   Show storage summary & disk usage"
     echo "  archive <model-name>     Move model from internal → external SSD"
     echo "  restore <model-name>     Move model from external → internal SSD"
+    echo "  rm <model-name>          Permanently delete a model"
     echo "  help                     Show this help"
     echo ""
     echo "Config (.env):"
@@ -299,5 +337,6 @@ case "${1:-help}" in
     status)   cmd_status ;;
     archive)  cmd_archive "${2:-}" ;;
     restore)  cmd_restore "${2:-}" ;;
+    rm)       cmd_remove "${2:-}" ;;
     help|*)   cmd_help ;;
 esac

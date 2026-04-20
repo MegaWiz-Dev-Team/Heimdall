@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heimdall LLM Gateway</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-base: #f8fafc;
+            --bg-card: rgba(255, 255, 255, 0.85);
+            --bg-card-hover: rgba(255, 255, 255, 1);
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --accent: #0284c7;
+            --accent-glow: rgba(2, 132, 199, 0.2);
+            --success: #059669;
+            --ring: rgba(2, 132, 199, 0.3);
+            --border: rgba(15, 23, 42, 0.1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        /* Elaborate Background */
+        .background-fx {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: -1;
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(56, 189, 248, 0.07), transparent 40%),
+                radial-gradient(circle at 85% 30%, rgba(139, 92, 246, 0.07), transparent 40%);
+            background-size: cover;
+        }
+
+        header {
+            padding: 3rem 2rem 2rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+            background: rgba(248, 250, 252, 0.8);
+            backdrop-filter: blur(12px);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 3rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+        }
+
+        h1 span {
+            background: linear-gradient(135deg, #0284c7, #4f46e5);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        h1 .logo {
+            font-size: 2.5rem;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        p.subtitle {
+            font-size: 1.1rem;
+            color: var(--text-muted);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            border-radius: 99px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-top: 1.5rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--success);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--success);
+            animation: pulse 2s infinite;
+        }
+
+        main {
+            flex-grow: 1;
+            padding: 3rem 2rem;
+            max-width: 1400px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 2rem;
+        }
+
+        h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.8rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .model-count {
+            background: var(--bg-card);
+            padding: 0.25rem 0.75rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            color: var(--accent);
+            border: 1px solid var(--border);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 1.5rem;
+        }
+
+        /* Glassmorphism Card */
+        .card {
+            background: var(--bg-card);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 10px 30px -10px rgba(0,0,0,0.3);
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            background: var(--bg-card-hover);
+            border-color: rgba(56, 189, 248, 0.4);
+            box-shadow: 0 20px 40px -10px rgba(0,0,0,0.5), 0 0 20px 0 var(--accent-glow);
+        }
+
+        .card:hover::before {
+            opacity: 1;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+        }
+
+        .card-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: rgba(2, 132, 199, 0.05);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            margin-right: 1rem;
+            border: 1px solid var(--border);
+        }
+
+        .card-title-group {
+            flex-grow: 1;
+        }
+
+        .card-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-main);
+            margin-bottom: 0.25rem;
+            word-break: break-word;
+        }
+
+        .card-meta {
+            font-size: 0.85rem;
+            color: var(--accent);
+            font-family: monospace;
+            display: inline-block;
+            background: rgba(56, 189, 248, 0.1);
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+        }
+
+        .card-details {
+            margin-top: auto;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        /* Loaders and States */
+        #loading {
+            text-align: center;
+            padding: 4rem;
+            color: var(--text-muted);
+            grid-column: 1 / -1;
+            font-size: 1.2rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255,255,255,0.1);
+            border-radius: 50%;
+            border-top-color: var(--accent);
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        .error-state {
+            grid-column: 1 / -1;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+            padding: 2rem;
+            border-radius: 16px;
+            text-align: center;
+        }
+
+        /* Animations */
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Helpers */
+        .tech-tag {
+            font-size: 0.75rem;
+            padding: 0.2rem 0.5rem;
+            background: rgba(255,255,255,0.05);
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="background-fx"></div>
+
+    <header>
+        <h1><div class="logo">🧠</div> Heimdall <span>Gateway</span></h1>
+        <p class="subtitle">Unified Local LLM Proxy & MLX Inference Backend Orchestrator</p>
+        <div class="status-pill" id="health-status">
+            <div class="status-dot"></div>
+            Checking System Status...
+        </div>
+    </header>
+
+    <main>
+        <div class="section-header">
+            <h2>🏎️ Local GPU Models <span class="model-count" id="model-count">0</span></h2>
+            <div class="tech-tag">Apple Silicon MLX</div>
+        </div>
+
+        <div class="grid" id="models-grid">
+            <div id="loading">
+                <div class="spinner"></div>
+                <p>Syncing tensor blocks from MLX Node...</p>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', fetchModels);
+
+        async function fetchModels() {
+            try {
+                // Fetch from the local Gateway /health
+                const res = await fetch('/health');
+                
+                if (!res.ok) {
+                    throw new Error(`HTTP Error ${res.status}`);
+                }
+
+                const data = await res.json();
+                updateHealthBadge(data.status === 'healthy', 'System Online (Proxy + MLX)');
+                
+                let models = [];
+                // Defensively parse nested structures
+                if (data.backend && data.backend.models && data.backend.models.data) {
+                    models = data.backend.models.data;
+                }
+
+                renderModels(models);
+
+            } catch (error) {
+                console.error("Heimdall fetch failed:", error);
+                updateHealthBadge(false, 'Gateway Degraded or MLX Offline');
+                document.getElementById('models-grid').innerHTML = `
+                    <div class="error-state">
+                        <h3>⚠️ Connection Interrupted</h3>
+                        <p style="margin-top: 0.5rem;">Could not reach MLX inference backend. Verify the node is running.</p>
+                        <p style="font-family: monospace; margin-top: 1rem; opacity: 0.8">${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function updateHealthBadge(isHealthy, text) {
+            const pill = document.getElementById('health-status');
+            if (isHealthy) {
+                pill.style.background = 'rgba(16, 185, 129, 0.1)';
+                pill.style.color = 'var(--success)';
+                pill.style.borderColor = 'rgba(16, 185, 129, 0.2)';
+                pill.innerHTML = `<div class="status-dot"></div> ${text}`;
+            } else {
+                pill.style.background = 'rgba(239, 68, 68, 0.1)';
+                pill.style.color = '#ef4444';
+                pill.style.borderColor = 'rgba(239, 68, 68, 0.2)';
+                pill.innerHTML = `<div class="status-dot" style="background: #ef4444; box-shadow: 0 0 10px #ef4444;"></div> ${text}`;
+            }
+        }
+
+        function renderModels(models) {
+            const grid = document.getElementById('models-grid');
+            document.getElementById('model-count').textContent = models.length;
+
+            if (models.length === 0) {
+                grid.innerHTML = `
+                    <div class="error-state" style="color: var(--text-muted); background: var(--bg-card); border-color: var(--border);">
+                        <h3>No Local Models Found</h3>
+                        <p style="margin-top: 0.5rem;">The MLX node is running but currently holds zero loaded models.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const cardsInfo = models.map(m => {
+                const id = m.id || 'Unknown';
+                let displayName = extractName(id);
+                let params = extractParams(id);
+                let icon = getIcon(id);
+                
+                // Format date timestamp
+                let dateStr = 'Unknown date';
+                if (m.created) {
+                    const d = new Date(m.created * 1000);
+                    dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                }
+
+                return `
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-icon">${icon}</div>
+                            <div class="card-title-group">
+                                <div class="card-title">${displayName}</div>
+                                <div class="card-meta">${params}</div>
+                            </div>
+                        </div>
+                        <div style="font-size: 0.85rem; color: #64748b; margin-bottom: 1rem; word-break: break-all;">
+                            ${id}
+                        </div>
+                        <div class="card-details">
+                            <span class="tech-tag">MLX 4-bit</span>
+                            <span>Added ${dateStr}</span>
+                        </div>
+                    </div>
+                `;
+            });
+
+            grid.innerHTML = cardsInfo.join('');
+        }
+
+        function extractName(id) {
+            let parts = id.split('/');
+            let basename = parts[parts.length - 1];
+            
+            // Cleanup visually
+            basename = basename.replace('-4bit', '').replace('-MLX', '').replace(/-it$/i, ' Instruct');
+            
+            // Title case handling
+            if (basename.toLowerCase().includes('qwen')) return basename.replace(/qwen/i, 'Qwen');
+            if (basename.toLowerCase().includes('gemma')) return basename.replace(/gemma/i, 'Gemma');
+            if (basename.toLowerCase().includes('llama')) return basename.replace(/llama/i, 'Llama');
+            
+            return basename;
+        }
+
+        function extractParams(id) {
+            let str = id.toLowerCase();
+            if (str.includes('31b')) return '31B Parameters';
+            if (str.includes('27b')) return '27B Parameters';
+            if (str.includes('26b')) return '26B Parameters';
+            if (str.includes('14b')) return '14B Parameters';
+            if (str.includes('7b') || str.includes('8b')) return '~8B Parameters';
+            if (str.includes('4b')) return '4B Parameters';
+            if (str.includes('0.5b')) return '0.5B Parameters';
+            if (str.includes('0.6b')) return '0.6B Parameters';
+            return 'Weights loaded';
+        }
+
+        function getIcon(id) {
+            let str = id.toLowerCase();
+            if (str.includes('qwen')) return '🐲';
+            if (str.includes('gemma')) return '💎';
+            if (str.includes('llama')) return '🦙';
+            if (str.includes('med')) return '⚕️'; // Medical variants
+            return '🧠';
+        }
+    </script>
+</body>
+</html>

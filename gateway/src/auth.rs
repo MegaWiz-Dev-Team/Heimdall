@@ -18,9 +18,9 @@ pub async fn auth_middleware(
     request: Request<Body>,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    // Skip auth for health and metrics endpoints
+    // Skip auth for UI and health endpoints
     let path = request.uri().path();
-    if path == "/health" || path == "/metrics" || path == "/ready" || path == "/api/gpu" {
+    if path == "/" || path == "/health" || path == "/metrics" || path == "/ready" || path == "/api/gpu" {
         return Ok(next.run(request).await);
     }
 
@@ -69,10 +69,22 @@ mod tests {
                 gateway_port: 3000,
                 backend_host: "127.0.0.1".into(),
                 backend_port: 8000,
+                embedding_host: "127.0.0.1".into(),
+                embedding_port: 8001,
                 api_keys: keys.clone(),
                 auth_enabled: !keys.is_empty(),
+                llm_model: "".into(),
+                project_dir: "../".into(),
+                openrouter_api_key: None,
+                openrouter_base_url: "https://openrouter.ai/api/v1".into(),
+                gemini_api_key: None,
+                gemini_base_url: "https://generativelanguage.googleapis.com/v1beta/openai".into(),
+                openai_api_key: None,
+                openai_base_url: "https://api.openai.com/v1".into(),
             }),
             http_client: reqwest::Client::new(),
+            active_model: Arc::new(std::sync::RwLock::new(String::new())),
+            swap_lock: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
 
