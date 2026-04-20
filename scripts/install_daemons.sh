@@ -2,8 +2,13 @@
 set -euo pipefail
 
 # ============================================
-# LLM Server — Daemon Installer (macOS)
+# Heimdall — Daemon Installer (macOS)
 # Registers Heimdall components to launchd
+#
+# Services managed:
+#   1. heimdall-gateway   — Rust API Gateway (:8080)
+#   2. heimdall-mlx       — MLX LLM Backend  (:8081)
+#   3. heimdall-logshipper — Host Log Shipper → Tyr/Wazuh
 # ============================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,45 +24,61 @@ if [[ "$(uname)" != "Darwin" ]]; then
     exit 1
 fi
 
-HOMEBREW_PREFIX=$(brew --prefix 2>/dev/null || echo "/opt/homebrew")
-
 mkdir -p "$LAUNCHD_DIR"
 mkdir -p "$PROJECT_DIR/logs"
 
-# Install Gateway Service
-echo "📦 Installing Gateway Service..."
+# ── Clean up legacy daemons ──────────────────────────────────
+echo "🧹 Removing legacy daemons..."
+for legacy in com.asgard.heimdall-llama com.asgard.heimdall-embedding com.asgard.colima; do
+    if [ -f "$LAUNCHD_DIR/$legacy.plist" ]; then
+        launchctl unload "$LAUNCHD_DIR/$legacy.plist" 2>/dev/null || true
+        rm "$LAUNCHD_DIR/$legacy.plist"
+        echo "   Removed $legacy"
+    fi
+done
+
+# ── Install Gateway Service ──────────────────────────────────
+echo "📦 Installing Heimdall Gateway (:8080)..."
 sed -e "s|{{PROJECT_DIR}}|$PROJECT_DIR|g" \
     "$PROJECT_DIR/deploy/launchd/com.asgard.heimdall-gateway.plist" \
     > "$LAUNCHD_DIR/com.asgard.heimdall-gateway.plist"
 
-# Install Embedding Services
-echo "📦 Installing Embedding Services..."
-sed -e "s|{{PROJECT_DIR}}|$PROJECT_DIR|g" -e "s|{{HOMEBREW_PREFIX}}|$HOMEBREW_PREFIX|g" \
-    "$PROJECT_DIR/deploy/launchd/com.asgard.heimdall-llama.plist" \
-    > "$LAUNCHD_DIR/com.asgard.heimdall-llama.plist"
-    
+# ── Install MLX Backend Service ──────────────────────────────
+echo "📦 Installing MLX LLM Backend (:8081)..."
 sed -e "s|{{PROJECT_DIR}}|$PROJECT_DIR|g" \
-    "$PROJECT_DIR/deploy/launchd/com.asgard.heimdall-embedding.plist" \
-    > "$LAUNCHD_DIR/com.asgard.heimdall-embedding.plist"
+    "$PROJECT_DIR/deploy/launchd/com.asgard.heimdall-mlx.plist" \
+    > "$LAUNCHD_DIR/com.asgard.heimdall-mlx.plist"
 
-# Unload existing
+# ── Install Log Shipper Service ──────────────────────────────
+echo "📦 Installing Heimdall Log Shipper (→ Tyr/Wazuh)..."
+# No placeholders in this one, just direct copy if exists, or assume it's created manually
+# (Since we wrote it directly to Library, let's copy it back to deploy/ for backup)
+cp "$LAUNCHD_DIR/com.asgard.heimdall-logshipper.plist" "$PROJECT_DIR/deploy/launchd/" 2>/dev/null || true
+cp "$PROJECT_DIR/deploy/launchd/com.asgard.heimdall-logshipper.plist" "$LAUNCHD_DIR/com.asgard.heimdall-logshipper.plist"
+
+# ── Reload services ─────────────────────────────────────────
 echo "🔄 Reloading launchd services..."
 launchctl unload "$LAUNCHD_DIR/com.asgard.heimdall-gateway.plist" 2>/dev/null || true
-launchctl unload "$LAUNCHD_DIR/com.asgard.heimdall-llama.plist" 2>/dev/null || true
-launchctl unload "$LAUNCHD_DIR/com.asgard.heimdall-embedding.plist" 2>/dev/null || true
+launchctl unload "$LAUNCHD_DIR/com.asgard.heimdall-mlx.plist" 2>/dev/null || true
+launchctl unload "$LAUNCHD_DIR/com.asgard.heimdall-logshipper.plist" 2>/dev/null || true
 
-# Load new
 launchctl load "$LAUNCHD_DIR/com.asgard.heimdall-gateway.plist"
-launchctl load "$LAUNCHD_DIR/com.asgard.heimdall-llama.plist"
-launchctl load "$LAUNCHD_DIR/com.asgard.heimdall-embedding.plist"
+launchctl load "$LAUNCHD_DIR/com.asgard.heimdall-mlx.plist"
+launchctl load "$LAUNCHD_DIR/com.asgard.heimdall-logshipper.plist"
 
 echo ""
 echo "✅ Heimdall Daemons Installed Successfully!"
 echo ""
-echo "Manage services using launchctl:"
-echo "  launchctl stop com.asgard.heimdall-gateway"
-echo "  launchctl start com.asgard.heimdall-gateway"
+echo "Services:"
+echo "  🌐 Gateway    :8080  — Rust API Gateway + built-in ONNX Embedding/Rerank"
+echo "  🧠 MLX Backend :8081  — MLX Python LLM server (chat/completions)"
+echo "  📡 Log Shipper        — Ships host logs to Tyr (Wazuh:30920)"
 echo ""
-echo "⚠️  NOTE: By default, the MLX Python Text Backend (Port 8081) is NOT managed"
-echo "   by launchd to allow for decoupling. If using heavy parameter models like"
-echo "   Qwen3.5-397B, you must start the Flash-MoE server manually on 8081."
+echo "Manage services using launchctl:"
+echo "  launchctl stop  com.asgard.heimdall-gateway"
+echo "  launchctl start com.asgard.heimdall-gateway"
+echo "  launchctl stop  com.asgard.heimdall-mlx"
+echo "  launchctl start com.asgard.heimdall-mlx"
+echo ""
+echo "Logs: $PROJECT_DIR/logs/"
+echo ""

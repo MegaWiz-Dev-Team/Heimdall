@@ -1,21 +1,27 @@
 /// Reverse proxy to the LLM backend engine.
 /// Forwards all /v1/* requests to the vllm-mlx backend,
 /// supporting both regular JSON responses and SSE streaming.
+///
+/// Enhanced with Smart Router: inspects the `model` field to decide
+/// whether to forward locally or to an external provider (OpenRouter, Gemini, OpenAI).
 
 use axum::{
     body::Body,
     extract::State,
     http::{HeaderMap, Method, StatusCode, Uri},
-    response::Response,
+    response::{Html, Response},
     routing::{any, get},
     Router,
 };
 use bytes::Bytes;
 use futures::StreamExt;
 
+use crate::router::{self, ResolvedRoute};
+use crate::telemetry;
 use crate::AppState;
 
-/// Proxy handler — forwards request to backend and streams response back.
+/// Proxy handler — routes request based on model prefix, then forwards and streams response.
+#[tracing::instrument(skip(state, headers, body), fields(method = %method, uri = %uri, model = tracing::field::Empty))]
 async fn proxy_handler(
     State(state): State<AppState>,
     method: Method,
@@ -24,15 +30,8 @@ async fn proxy_handler(
     body: Body,
 ) -> Result<Response, StatusCode> {
     let start = std::time::Instant::now();
-    let path = uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
-    
-    // All remaining /v1/* requests go to the LLM chat backend
-    let target_base_url = state.config.backend_url();
-    
-    // Forward the path as-is to the chosen backend.
-    let backend_url = format!("{}{}", target_base_url, path);
-
-    tracing::info!("{} {} → {}", method, uri, backend_url);
+    let path_owned = uri.path_and_query().map(|pq| pq.as_str().to_string()).unwrap_or_else(|| "/".to_string());
+    let path = path_owned.as_str();
 
     // Collect request body
     let body_bytes = match axum::body::to_bytes(body, 10 * 1024 * 1024).await {
@@ -43,78 +42,283 @@ async fn proxy_handler(
         }
     };
 
-    // Hot-swap logic: check if the request asks for a new MLX model
-    if path == "/chat/completions" || path == "/completions" || path == "/v1/chat/completions" || path == "/v1/completions" {
-        if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&body_bytes) {
-            if let Some(requested_model) = json.get("model").and_then(|m| m.as_str()) {
-                let current_model = {
-                    let lock = state.active_model.read().unwrap();
-                    (*lock).clone()
-                };
+    // ── Route Resolution ────────────────────────────────────────────────
+    // Only attempt routing for chat/completions endpoints
+    let is_completion_path = path == "/chat/completions"
+        || path == "/completions"
+        || path == "/v1/chat/completions"
+        || path == "/v1/completions";
 
-                // Only perform hot-swap if the model is different and it is an MLX model or empty provider (so not natively ollama)
-                if requested_model != current_model && requested_model != "" {
-                    // We need to swap! Enter mutex to prevent race conditions.
-                    tracing::info!("🔄 Model swap requested: '{}' != '{}'", requested_model, current_model);
-                    let _guard = state.swap_lock.lock().await;
+    // Extract requested model
+    let requested_model = if is_completion_path {
+        serde_json::from_slice::<serde_json::Value>(&body_bytes)
+            .ok()
+            .and_then(|json| json.get("model").and_then(|m| m.as_str()).map(String::from))
+    } else {
+        None
+    };
 
-                    // Double-check inside lock
-                    let current_model = {
-                        let lock = state.active_model.read().unwrap();
-                        (*lock).clone()
-                    };
+    if let Some(ref model) = requested_model {
+        tracing::Span::current().record("model", model.as_str());
+    }
 
-                    if requested_model != current_model {
-                        tracing::warn!("Executing hot-swap to {}...", requested_model);
-                        let output = tokio::process::Command::new("./scripts/hotswap.sh")
-                            .arg(requested_model)
-                            .current_dir(&state.config.project_dir)
-                            .output()
-                            .await;
+    // Extract tenant-specific provider key from header
+    let provider_key = router::extract_provider_key(&headers);
 
-                        match output {
-                            Ok(out) if out.status.success() => {
-                                tracing::info!("✅ Hot-swap successful!");
-                                let mut lock = state.active_model.write().unwrap();
-                                *lock = requested_model.to_string();
-                            }
-                            Ok(out) => {
-                                let stderr = String::from_utf8_lossy(&out.stderr);
-                                let stdout = String::from_utf8_lossy(&out.stdout);
-                                tracing::error!("❌ Hot-swap script failed: {}\nStdout: {}", stderr, stdout);
-                                return Err(StatusCode::INTERNAL_SERVER_ERROR);
-                            }
-                            Err(e) => {
-                                tracing::error!("❌ Failed to execute hot-swap script: {}", e);
-                                return Err(StatusCode::INTERNAL_SERVER_ERROR);
-                            }
-                        }
+    // Resolve route
+    let route = if let Some(ref model) = requested_model {
+        match router::resolve_route(model, &state.config, provider_key.as_deref()) {
+            Ok(r) => r,
+            Err((status, msg)) => {
+                tracing::warn!("Route resolution failed: {}", msg);
+                return Ok(Response::builder()
+                    .status(status)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"error": {"message": msg}}).to_string(),
+                    ))
+                    .unwrap());
+            }
+        }
+    } else {
+        // Non-completion paths (e.g. /v1/models) → always local
+        ResolvedRoute::Local {
+            model: String::new(),
+        }
+    };
+
+    match route {
+        ResolvedRoute::Local { ref model } => {
+            handle_local_proxy(state, method, uri, headers, body_bytes, path, model, start).await
+        }
+        ResolvedRoute::External {
+            ref provider,
+            ref model,
+            ref base_url,
+            ref api_key,
+        } => {
+            handle_external_proxy(
+                state,
+                method,
+                headers,
+                body_bytes,
+                path,
+                provider,
+                model,
+                base_url,
+                api_key,
+                &requested_model.unwrap_or_default(),
+                start,
+            )
+            .await
+        }
+    }
+}
+
+/// Forward request to the local MLX/llama.cpp backend (existing behavior).
+async fn handle_local_proxy(
+    state: AppState,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body_bytes: Bytes,
+    path: &str,
+    model: &str,
+    start: std::time::Instant,
+) -> Result<Response, StatusCode> {
+    let target_base_url = state.config.backend_url();
+    let backend_url = format!("{}{}", target_base_url, path);
+
+    tracing::info!("{} {} → {} (local)", method, uri, backend_url);
+
+    // Hot-swap logic: check if the request asks for a different MLX model
+    let is_completion_path = path == "/chat/completions"
+        || path == "/completions"
+        || path == "/v1/chat/completions"
+        || path == "/v1/completions";
+
+    if is_completion_path && !model.is_empty() {
+        let current_model = {
+            let lock = state.active_model.read().unwrap();
+            (*lock).clone()
+        };
+
+        if model != current_model && !model.is_empty() {
+            tracing::info!(
+                "🔄 Model swap requested: '{}' != '{}'",
+                model,
+                current_model
+            );
+            let _guard = state.swap_lock.lock().await;
+
+            // Double-check inside lock
+            let current_model = {
+                let lock = state.active_model.read().unwrap();
+                (*lock).clone()
+            };
+
+            if model != current_model {
+                tracing::warn!("Executing hot-swap to {}...", model);
+                let output = tokio::process::Command::new("./scripts/hotswap.sh")
+                    .arg(model)
+                    .current_dir(&state.config.project_dir)
+                    .output()
+                    .await;
+
+                match output {
+                    Ok(out) if out.status.success() => {
+                        tracing::info!("✅ Hot-swap successful!");
+                        let mut lock = state.active_model.write().unwrap();
+                        *lock = model.to_string();
+                    }
+                    Ok(out) => {
+                        let stderr = String::from_utf8_lossy(&out.stderr);
+                        let stdout = String::from_utf8_lossy(&out.stdout);
+                        tracing::error!(
+                            "❌ Hot-swap script failed: {}\nStdout: {}",
+                            stderr,
+                            stdout
+                        );
+                        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+                    }
+                    Err(e) => {
+                        tracing::error!("❌ Failed to execute hot-swap script: {}", e);
+                        return Err(StatusCode::INTERNAL_SERVER_ERROR);
                     }
                 }
             }
         }
     }
 
+    // Forward to local backend
+    forward_request(
+        &state,
+        method,
+        uri,
+        headers,
+        body_bytes,
+        &backend_url,
+        None, // No auth override for local
+        "local",
+        model,
+        start,
+    )
+    .await
+}
+
+/// Forward request to an external provider (OpenRouter, Gemini, OpenAI).
+async fn handle_external_proxy(
+    state: AppState,
+    method: Method,
+    headers: HeaderMap,
+    body_bytes: Bytes,
+    path: &str,
+    provider: &str,
+    model: &str,
+    base_url: &str,
+    api_key: &str,
+    _original_model: &str,
+    start: std::time::Instant,
+) -> Result<Response, StatusCode> {
+    // Rewrite the model field in the JSON body — strip the provider prefix
+    let rewritten_body = if let Ok(mut json) =
+        serde_json::from_slice::<serde_json::Value>(&body_bytes)
+    {
+        if let Some(obj) = json.as_object_mut() {
+            obj.insert("model".to_string(), serde_json::Value::String(model.to_string()));
+        }
+        serde_json::to_vec(&json).unwrap_or_else(|_| body_bytes.to_vec())
+    } else {
+        body_bytes.to_vec()
+    };
+
+    // Determine the correct path for the external provider
+    let external_path = if path.contains("chat/completions") {
+        "/chat/completions"
+    } else if path.contains("completions") {
+        "/completions"
+    } else {
+        path
+    };
+
+    let external_url = format!(
+        "{}{}",
+        base_url.trim_end_matches('/'),
+        external_path
+    );
+
+    tracing::info!(
+        "🌐 {} → {} (provider={}, model={})",
+        method,
+        external_url,
+        provider,
+        model
+    );
+
+    let uri_for_log: Uri = external_url.parse().unwrap_or_default();
+
+    forward_request(
+        &state,
+        method,
+        uri_for_log,
+        headers,
+        Bytes::from(rewritten_body),
+        &external_url,
+        Some(api_key),
+        provider,
+        model,
+        start,
+    )
+    .await
+}
+
+/// Shared request forwarding logic — handles both local and external targets.
+async fn forward_request(
+    state: &AppState,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body_bytes: Bytes,
+    target_url: &str,
+    auth_override: Option<&str>,
+    provider: &str,
+    model: &str,
+    start: std::time::Instant,
+) -> Result<Response, StatusCode> {
     // Build the proxied request
     let mut req_builder = state
         .http_client
-        .request(method.clone(), &backend_url)
+        .request(method.clone(), target_url)
         .body(body_bytes.clone());
 
     // Forward relevant headers
     for (key, value) in headers.iter() {
         let key_str = key.as_str();
-        if key_str != "host" && key_str != "authorization" {
+        // Skip hop-by-hop headers and auth (we'll set our own)
+        if key_str != "host"
+            && key_str != "authorization"
+            && key_str != "x-provider-key"
+            && key_str != "content-length"
+        {
             req_builder = req_builder.header(key.clone(), value.clone());
         }
     }
+
+    // Set authorization
+    if let Some(api_key) = auth_override {
+        req_builder = req_builder.header("Authorization", format!("Bearer {}", api_key));
+    }
+
+    // Ensure content-type is set
+    req_builder = req_builder.header("Content-Type", "application/json");
 
     // Send request to backend
     let backend_resp = match req_builder.send().await {
         Ok(resp) => resp,
         Err(e) => {
-            tracing::error!("Backend request failed: {}", e);
-            metrics::counter!("proxy_errors_total").increment(1);
+            tracing::error!("Backend request failed (provider={}): {}", provider, e);
+            metrics::counter!("proxy_errors_total", "provider" => provider.to_string())
+                .increment(1);
             return Err(StatusCode::BAD_GATEWAY);
         }
     };
@@ -127,17 +331,21 @@ async fn proxy_handler(
         .unwrap_or("")
         .to_string();
 
-    // Check if this is a streaming response (SSE)
     let is_streaming = content_type.contains("text/event-stream");
 
-    // Record metrics
+    // Record base metrics
     let elapsed = start.elapsed();
-    metrics::counter!("proxy_requests_total").increment(1);
-    metrics::histogram!("proxy_request_duration_seconds").record(elapsed.as_secs_f64());
+    metrics::counter!("proxy_requests_total", "provider" => provider.to_string()).increment(1);
+    metrics::histogram!("proxy_request_duration_seconds", "provider" => provider.to_string())
+        .record(elapsed.as_secs_f64());
 
     if is_streaming {
         // Stream SSE response
-        tracing::info!("Streaming SSE response ({}ms to first byte)", elapsed.as_millis());
+        tracing::info!(
+            "Streaming SSE response (provider={}, {}ms to first byte)",
+            provider,
+            elapsed.as_millis()
+        );
 
         let stream = backend_resp.bytes_stream().map(|chunk| {
             chunk
@@ -152,7 +360,6 @@ async fn proxy_handler(
 
         let mut response = Response::builder().status(status.as_u16());
 
-        // Forward response headers
         for (key, value) in resp_headers.iter() {
             let key_str = key.as_str();
             if key_str != "transfer-encoding" {
@@ -169,18 +376,37 @@ async fn proxy_handler(
         })?;
 
         tracing::info!(
-            "{} {} → {} ({}ms, {} bytes)",
+            "{} {} → {} (provider={}, {}ms, {} bytes)",
             method,
             uri,
             status,
+            provider,
             elapsed.as_millis(),
             response_body.len()
         );
 
+        // Record telemetry from response body (token usage, etc.)
+        if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&response_body) {
+            telemetry::record_from_response(
+                provider,
+                model,
+                "chat",
+                &json,
+                elapsed.as_millis() as u64,
+                status.as_u16(),
+            );
+        }
+
         let mut response = Response::builder().status(status.as_u16());
 
         for (key, value) in resp_headers.iter() {
-            response = response.header(key.clone(), value.clone());
+            let key_str = key.as_str();
+            if key_str != "transfer-encoding" 
+                && key_str != "content-encoding" 
+                && key_str != "content-length" 
+            {
+                response = response.header(key.clone(), value.clone());
+            }
         }
 
         Ok(response
@@ -193,21 +419,4 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         // OpenAI-compatible endpoints
         .route("/v1/{*path}", any(proxy_handler))
-        // Root fallback
-        .route(
-            "/",
-            get(|| async {
-                serde_json::json!({
-                    "name": "Heimdall",
-                    "description": "Guardian of the LLM realm",
-                    "version": env!("CARGO_PKG_VERSION"),
-                    "endpoints": {
-                        "api": "/v1/",
-                        "health": "/health",
-                        "metrics": "/metrics"
-                    }
-                })
-                .to_string()
-            }),
-        )
 }
