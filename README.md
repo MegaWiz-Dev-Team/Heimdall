@@ -1,7 +1,12 @@
 # 🛡️ Heimdall — LLM Gateway
-![Version](https://img.shields.io/badge/version-0.4.0-blue.svg) ![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg) ![Platform](https://img.shields.io/badge/platform-macOS_Apple_Silicon-lightgrey.svg) ![License](https://img.shields.io/badge/license-AGPL_3.0-blue.svg)
 
-> Part of the [Asgard AI Platform](https://github.com/megacare-dev/Asgard)
+[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](CHANGELOG.md)
+[![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
+[![Platform](https://img.shields.io/badge/platform-macOS_Apple_Silicon-lightgrey.svg)](#)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![Part of Asgard](https://img.shields.io/badge/part%20of-Asgard%20AI%20Platform-purple.svg)](https://github.com/MegaWiz-Dev-Team/Asgard)
+
+> Part of the [Asgard AI Platform](https://github.com/MegaWiz-Dev-Team/Asgard)
 
 Heimdall is a high-performance LLM gateway built in Rust (Axum + Tokio) that provides a unified OpenAI-compatible API for multiple local LLM backends.
 
