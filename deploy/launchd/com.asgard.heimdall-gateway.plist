@@ -24,7 +24,7 @@
         <key>EMBEDDING_PORT</key>
         <string>8001</string>
         <key>API_KEYS</key>
-        <string>hml-REDACTED</string>
+        <string>{{API_KEYS}}</string>
         <key>RUST_LOG</key>
         <string>info</string>
     </dict>

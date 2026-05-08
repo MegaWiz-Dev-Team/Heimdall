@@ -7,7 +7,10 @@ import statistics
 import datetime
 
 # --- Configuration ---
-API_KEY = "hml-REDACTED"
+API_KEY = os.environ.get("HEIMDALL_API_KEY", "")
+if not API_KEY:
+    print("Error: HEIMDALL_API_KEY environment variable not set.", file=sys.stderr)
+    sys.exit(1)
 MODEL = "BAAI/bge-m3"
 
 # Endpoints

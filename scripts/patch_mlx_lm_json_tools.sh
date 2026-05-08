@@ -29,7 +29,12 @@
 
 set -euo pipefail
 
-VENV_ROOT=/Users/mimir/Developer/Heimdall/.venv/lib/python3.14/site-packages/mlx_lm
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VENV_DIR="${HEIMDALL_VENV:-${PROJECT_DIR}/.venv}"
+VENV_PY="${VENV_DIR}/bin/python"
+
+# Resolve the mlx_lm package directory under the active venv (any python version).
+VENV_ROOT="$("${VENV_PY}" -c 'import mlx_lm, os; print(os.path.dirname(mlx_lm.__file__))')"
 JSON_TOOLS=$VENV_ROOT/tool_parsers/json_tools.py
 SERVER_FILE=$VENV_ROOT/server.py
 JSON_MARKER="Sprint 51c Path B local patch"
@@ -63,7 +68,7 @@ PY
 }
 
 apply_server_py() {
-    /Users/mimir/Developer/Heimdall/.venv/bin/python - "$SERVER_FILE" <<'PY'
+    "${VENV_PY}" - "$SERVER_FILE" <<'PY'
 import sys
 path = sys.argv[1]
 src = open(path).read()
@@ -148,7 +153,7 @@ case "${1:-apply}" in
         $ok && exit 0 || exit 1
         ;;
     --revert)
-        /Users/mimir/Developer/Heimdall/.venv/bin/python -m pip install --quiet --force-reinstall --no-deps mlx-lm 2>&1 | tail -2
+        "${VENV_PY}" -m pip install --quiet --force-reinstall --no-deps mlx-lm 2>&1 | tail -2
         echo "↩ reverted via pip --force-reinstall"
         exit 0
         ;;

@@ -12,9 +12,10 @@ INDEXER_URL = os.environ.get("WAZUH_INDEXER_URL", "https://127.0.0.1:30920")
 INDEXER_USER = os.environ.get("WAZUH_INDEXER_USER", "admin")
 INDEXER_PASS = os.environ.get("WAZUH_INDEXER_PASS", "admin")
 
+PROJECT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 LOG_FILES = {
-    "heimdall_gateway": "/Users/mimir/Developer/Heimdall/logs/gateway-stdout.log",
-    "heimdall_mlx": "/Users/mimir/Developer/Heimdall/logs/mlx-stdout.log"
+    "heimdall_gateway": os.environ.get("HEIMDALL_GATEWAY_LOG", os.path.join(PROJECT_DIR, "logs/gateway-stdout.log")),
+    "heimdall_mlx": os.environ.get("HEIMDALL_MLX_LOG", os.path.join(PROJECT_DIR, "logs/mlx-stdout.log")),
 }
 
 BATCH_SIZE = 50

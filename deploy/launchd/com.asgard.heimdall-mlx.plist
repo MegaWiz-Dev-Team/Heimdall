@@ -22,7 +22,7 @@
     <key>EnvironmentVariables</key>
     <dict>
         <key>HOME</key>
-        <string>/Users/mimir</string>
+        <string>{{HOME}}</string>
         <key>TOKENIZERS_PARALLELISM</key>
         <string>false</string>
     </dict>
