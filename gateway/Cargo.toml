@@ -45,6 +45,16 @@ sysinfo = "0.38.4"
 # Native Embedding Engine (ONNX Runtime + CoreML on Apple Silicon)
 fastembed = "5.13"
 
+# 🌑 Skuggi PII Guardrail (Sprint 50b v0 scaffolding) — see ADR-007
+regex = "1.11"
+once_cell = "1.20"
+# Sprint 50b Day-1: per-tenant pii_mode lookup against Mimir's MariaDB.
+# Heimdall reads tenant_configs directly with a short-TTL cache so the
+# hot path stays sub-ms. Connection pool managed via sqlx.
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "mysql", "macros", "chrono", "json"] }
+dashmap = "6.1"
+getrandom = "0.2"
+
 [dev-dependencies]
 # Testing
 tokio-test = "0.4"

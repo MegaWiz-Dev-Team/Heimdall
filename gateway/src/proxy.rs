@@ -220,17 +220,208 @@ async fn handle_external_proxy(
     _original_model: &str,
     start: std::time::Instant,
 ) -> Result<Response, StatusCode> {
-    // Rewrite the model field in the JSON body — strip the provider prefix
-    let rewritten_body = if let Ok(mut json) =
-        serde_json::from_slice::<serde_json::Value>(&body_bytes)
-    {
+    // Rewrite the model field + run 🌑 Skuggi PII redaction (Sprint 50b).
+    //
+    // Mode resolution order (first match wins):
+    //   1. `tenant_configs.pii_mode` for the tenant id in `X-Tenant-Id`
+    //      header (cached 60s) — production path
+    //   2. `SKUGGI_MODE` env var — fallback for tests / when MariaDB
+    //      is unreachable / no tenant header
+    //   3. default `mask-and-send` — never silently disable redaction
+    //
+    // Mode dispatch:
+    //   - off            → skip redaction entirely
+    //   - detect-only    → run detection, log, pass ORIGINAL payload
+    //   - mask-and-send  → run detection, log, send REDACTED payload  ◄── default
+    //   - block-on-pii   → run detection, log; if any PII found return 422
+    use crate::tenant_config::{insert_audit, AuditEvent, PiiMode};
+    let tenant_id = headers
+        .get("x-tenant-id")
+        .and_then(|v| v.to_str().ok())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let request_id = headers
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    let pii_mode = if let (Some(cache), Some(tid)) = (state.tenant_cfg.as_ref(), tenant_id.as_ref()) {
+        cache.get_pii_mode(tid).await
+    } else {
+        // Fallback: env var (back-compat with v0 partial scaffolding)
+        match std::env::var("SKUGGI_MODE").as_deref() {
+            Ok("off") => PiiMode::Off,
+            Ok(s) => PiiMode::from_db(s),
+            Err(_) => PiiMode::MaskAndSend, // safe default
+        }
+    };
+
+    let skuggi_started = std::time::Instant::now();
+
+    // First parse + run redaction; we may need the detection list before
+    // deciding whether to send the redacted body, the original body, or
+    // reject with 422.
+    let parsed_json = serde_json::from_slice::<serde_json::Value>(&body_bytes).ok();
+    let (rewritten_body, skuggi_detections, skuggi_pii_total) = if let Some(mut json) = parsed_json {
         if let Some(obj) = json.as_object_mut() {
             obj.insert("model".to_string(), serde_json::Value::String(model.to_string()));
         }
-        serde_json::to_vec(&json).unwrap_or_else(|_| body_bytes.to_vec())
+
+        match pii_mode {
+            PiiMode::Off => {
+                let body_bytes_out = serde_json::to_vec(&json).unwrap_or_else(|_| body_bytes.to_vec());
+                (body_bytes_out, Vec::new(), 0usize)
+            }
+            PiiMode::DetectOnly => {
+                // Detect on a clone; log; send the model-rewritten ORIGINAL.
+                let mut probe = json.clone();
+                let dets = crate::skuggi::redact_chat_body(&mut probe);
+                let pii_total: usize = dets.iter().map(|d| d.count).sum();
+                if pii_total > 0 {
+                    let summary: Vec<String> = dets.iter()
+                        .map(|d| format!("{}={}", d.category, d.count))
+                        .collect();
+                    tracing::info!(
+                        "🌑 skuggi[detect-only] tenant={:?} provider={} model={} detections={} (NOT REDACTED)",
+                        tenant_id, provider, model, summary.join(",")
+                    );
+                }
+                let body_bytes_out = serde_json::to_vec(&json).unwrap_or_else(|_| body_bytes.to_vec());
+                (body_bytes_out, dets, pii_total)
+            }
+            PiiMode::MaskAndSend => {
+                let dets = crate::skuggi::redact_chat_body(&mut json);
+                let pii_total: usize = dets.iter().map(|d| d.count).sum();
+                if pii_total > 0 {
+                    let summary: Vec<String> = dets.iter()
+                        .map(|d| format!("{}={}", d.category, d.count))
+                        .collect();
+                    tracing::info!(
+                        "🌑 skuggi[mask-and-send] tenant={:?} provider={} model={} detections={}",
+                        tenant_id, provider, model, summary.join(",")
+                    );
+                }
+                let body_bytes_out = serde_json::to_vec(&json).unwrap_or_else(|_| body_bytes.to_vec());
+                (body_bytes_out, dets, pii_total)
+            }
+            PiiMode::BlockOnPii => {
+                // Detect on a clone so the original survives if we decide to forward
+                let mut probe = json.clone();
+                let dets = crate::skuggi::redact_chat_body(&mut probe);
+                let pii_total: usize = dets.iter().map(|d| d.count).sum();
+                if pii_total > 0 {
+                    let summary: Vec<String> = dets.iter()
+                        .map(|d| format!("{}={}", d.category, d.count))
+                        .collect();
+                    tracing::warn!(
+                        "🌑 skuggi[block-on-pii] BLOCKED tenant={:?} provider={} model={} detections={}",
+                        tenant_id, provider, model, summary.join(",")
+                    );
+                    metrics::counter!("skuggi_blocked_total").increment(1);
+
+                    // Audit even when blocked — compliance needs proof
+                    // we caught it. Fire-and-forget so the 422 reply
+                    // isn't held up by the DB.
+                    if let (Some(cache), Some(tid)) = (state.tenant_cfg.as_ref(), tenant_id.as_ref()) {
+                        let pool = cache.pool().clone();
+                        let evt = AuditEvent {
+                            tenant_id: tid.clone(),
+                            request_id: request_id.clone(),
+                            provider: provider.to_string(),
+                            model: model.to_string(),
+                            mode: pii_mode,
+                            detections: dets,
+                            pii_total_count: pii_total,
+                            blocked: true,
+                            payload_bytes: body_bytes.len(),
+                            redacted_bytes: 0, // payload never sent
+                            duration: skuggi_started.elapsed(),
+                            detection_tier: "tier1",
+                        };
+                        tokio::spawn(async move { insert_audit(&pool, evt).await });
+                    }
+                    return Err(StatusCode::UNPROCESSABLE_ENTITY);
+                }
+                let body_bytes_out = serde_json::to_vec(&json).unwrap_or_else(|_| body_bytes.to_vec());
+                (body_bytes_out, dets, pii_total)
+            }
+        }
     } else {
-        body_bytes.to_vec()
+        // Body wasn't parseable JSON — pass through unchanged. Skuggi
+        // doesn't operate on opaque payloads (image-uploads, multipart,
+        // etc.); those are handled by the Syn OCR layer (`surface=image`).
+        (body_bytes.to_vec(), Vec::new(), 0usize)
     };
+
+    // Sprint 50b W2: Tier 2 NER (PyThaiNLP) — only when Tier 1 found
+    // little/nothing AND payload is long Thai text. Cheap heuristic
+    // gate keeps the 50-100ms NER call off the hot path for ~80% of
+    // requests. Sidecar URL via PYTHAINLP_URL env; absent or
+    // unreachable → fall back to Tier 1 result.
+    let mut tier_used = "tier1";
+    let mut combined_detections = skuggi_detections;
+    let mut combined_pii_total = skuggi_pii_total;
+    if pii_mode != PiiMode::Off {
+        let raw_text = std::str::from_utf8(&body_bytes).unwrap_or("");
+        if crate::skuggi::should_fire_tier2(raw_text, combined_pii_total) {
+            match crate::skuggi::tier2_detect(&state.http_client, raw_text).await {
+                Ok(Some(t2)) => {
+                    let t2_total: usize = t2.detections.iter().map(|d| d.count).sum();
+                    if t2_total > 0 {
+                        for det in t2.detections {
+                            // Map sidecar's stringly category to a stable &'static
+                            // — anything outside the known set falls back to
+                            // "thai_other" so audit rows never carry untrusted
+                            // user-controlled strings into static memory.
+                            let cat: &'static str = match det.category.as_str() {
+                                "thai_person_name" => "thai_person_name",
+                                "thai_address"     => "thai_address",
+                                "thai_org"         => "thai_org",
+                                _                  => "thai_other",
+                            };
+                            combined_detections.push(crate::skuggi::Detection {
+                                category: cat,
+                                count: det.count,
+                            });
+                        }
+                        combined_pii_total += t2_total;
+                        tier_used = "tier1+tier2";
+                        tracing::info!(
+                            "🌑 skuggi tier2 found {} additional PII items tenant={:?}",
+                            t2_total, tenant_id
+                        );
+                    }
+                }
+                Ok(None) => {} // sidecar not configured
+                Err(e) => tracing::warn!("🌑 skuggi tier2 call failed: {}", e),
+            }
+        }
+    }
+
+    let skuggi_duration = skuggi_started.elapsed();
+
+    // Day-3 audit: every cloud-bound chat call logs one row for the
+    // happy path (block-on-pii has its own pre-return insert above).
+    // Skip audit when we have no tenant/cache context — env-var fallback
+    // mode is for dev/test only and has no compliance requirement.
+    if let (Some(cache), Some(tid)) = (state.tenant_cfg.as_ref(), tenant_id.as_ref()) {
+        let pool = cache.pool().clone();
+        let evt = AuditEvent {
+            tenant_id: tid.clone(),
+            request_id: request_id.clone(),
+            provider: provider.to_string(),
+            model: model.to_string(),
+            mode: pii_mode,
+            detections: combined_detections,
+            pii_total_count: combined_pii_total,
+            blocked: false,
+            payload_bytes: body_bytes.len(),
+            redacted_bytes: rewritten_body.len(),
+            duration: skuggi_duration,
+            detection_tier: tier_used,
+        };
+        tokio::spawn(async move { insert_audit(&pool, evt).await });
+    }
 
     // Determine the correct path for the external provider
     let external_path = if path.contains("chat/completions") {

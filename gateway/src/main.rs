@@ -8,6 +8,8 @@ mod router;
 mod telemetry;
 mod gpu;
 mod pull;
+mod skuggi;
+mod tenant_config;
 use axum::{
     Router,
     middleware,
@@ -29,6 +31,9 @@ pub struct AppState {
     pub http_client: reqwest::Client,
     pub active_model: Arc<std::sync::RwLock<String>>,
     pub swap_lock: Arc<tokio::sync::Mutex<()>>,
+    /// 🌑 Skuggi tenant config cache. `None` when MARIADB_URL is unset
+    /// (dev/test mode); proxy falls back to env-var SKUGGI_MODE.
+    pub tenant_cfg: Option<Arc<tenant_config::TenantConfigCache>>,
 }
 
 #[tokio::main]
@@ -79,11 +84,42 @@ async fn main() {
     let active_model = Arc::new(std::sync::RwLock::new(config.llm_model.clone()));
     let swap_lock = Arc::new(tokio::sync::Mutex::new(()));
 
+    // 🌑 Skuggi tenant config cache. Optional — Heimdall starts fine
+    // without MariaDB (e.g. dev / unit-test environments); the proxy
+    // falls back to env-var SKUGGI_MODE in that case.
+    let tenant_cfg = match std::env::var("MARIADB_URL") {
+        Ok(url) if !url.is_empty() => {
+            match sqlx::mysql::MySqlPoolOptions::new()
+                .max_connections(5)
+                .acquire_timeout(std::time::Duration::from_secs(3))
+                .connect(&url)
+                .await
+            {
+                Ok(pool) => {
+                    tracing::info!("🌑 Skuggi tenant config cache connected to MariaDB");
+                    Some(Arc::new(tenant_config::TenantConfigCache::new(pool)))
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "🌑 Skuggi MariaDB connect failed ({}); falling back to env-var SKUGGI_MODE",
+                        e
+                    );
+                    None
+                }
+            }
+        }
+        _ => {
+            tracing::info!("🌑 Skuggi MARIADB_URL unset; using env-var SKUGGI_MODE fallback only");
+            None
+        }
+    };
+
     let state = AppState {
         config: Arc::new(config.clone()),
         http_client,
         active_model,
         swap_lock,
+        tenant_cfg,
     };
 
     // Build router
