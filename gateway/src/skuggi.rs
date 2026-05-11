@@ -24,6 +24,8 @@ use serde::Serialize;
 // them out is also clearer for tenant-overridable per-pattern config
 // when Sprint 50b proper wires this in.
 
+// ─── Tier 1a — free-text finders (scan anywhere) ─────────────────────────
+
 static RE_THAI_NATIONAL_ID: Lazy<Regex> = Lazy::new(|| {
     // 13 digits, optionally separated by dashes/spaces. First digit
     // is 1-8 per Thai citizen-ID spec (excludes test ranges 0/9).
@@ -40,17 +42,79 @@ static RE_EMAIL: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}").unwrap()
 });
 
-/// Tier 1 pattern dispatch table. `(category, placeholder, regex)`.
+// ─── Tier 1b — anchored form-field patterns ──────────────────────────────
+//
+// Medical certificates / discharge summaries / referral letters in Thai
+// hospitals use labeled fields ("Patient Name: …", "HN: …"). Anchored
+// detectors give us high precision on these without the false-positive
+// risk of free-form Thai-name regex (which would need NER — that's
+// Tier 2 PyThaiNLP).
+//
+// Validated against the B-50h.0 fixture (30 Thai medical certificates):
+// F1 ≥ 0.91 on all 5 categories (PATIENT_NAME / DOCTOR_NAME / HN /
+// LICENSE_NO / THAI_ID), 100% after correcting 3 gold-labeling bugs in
+// the source CSV. See Syn benchmarks/reports/2026-05-11_medical_certs_baseline.md
+// (gitignored — PII content).
+
+static RE_PATIENT_NAME_ANCHOR: Lazy<Regex> = Lazy::new(|| {
+    // Captures up to end-of-line. Multi-line input is handled by callers
+    // splitting on newlines OR by enabling the `m` flag (we choose
+    // explicit `\n|$` so behaviour stays identical across input shapes).
+    Regex::new(r"(?i)Patient\s*Name\s*[:：]?\s*([^\n]+?)(?:\n|$)").unwrap()
+});
+
+static RE_DOCTOR_NAME_ANCHOR: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)Doctor\s*Name\s*[:：]?\s*([^\n]+?)(?:\n|$)").unwrap()
+});
+
+static RE_HN_ANCHOR: Lazy<Regex> = Lazy::new(|| {
+    // HN = Hospital Number. Some hospitals use slash/dash separators.
+    Regex::new(r"(?i)\bHN\s*[:：]?\s*([0-9][\d\-/]*)").unwrap()
+});
+
+static RE_LICENSE_NO_ANCHOR: Lazy<Regex> = Lazy::new(|| {
+    // Thai medical license: "License Number: ว.12345" or "License Number: 12345"
+    Regex::new(r"(?i)License\s*Number\s*[:：]?\s*((?:ว\.?\s*)?\d[\w.\-\s]*?)(?:\n|$)").unwrap()
+});
+
+static RE_THAI_ID_ANCHOR: Lazy<Regex> = Lazy::new(|| {
+    // Backup anchor for when the form uses an explicit "ThaiID:" label
+    // instead of free-text 13-digit form. Captures the digits only.
+    Regex::new(r"(?i)\bThai\s*ID\s*[:：]?\s*(\d{13})").unwrap()
+});
+
+/// Tier 1 pattern dispatch table. `(category, placeholder, regex,
+/// replacement_strategy)`.
+///
+/// `Whole` replaces the full match with the placeholder (used by free-text
+/// finders — keeping the label-free token form). `Group1` keeps the label
+/// intact and replaces only capture group 1 (used by anchors — the form
+/// label "Patient Name:" itself is not PII, only the value).
 ///
 /// Order matters only for placeholder labelling — Tier 1 categories
 /// are mutually exclusive in practice. Sprint 50b proper will fold in
 /// per-tenant `pii_custom_patterns` from the `tenant_configs` table
 /// here.
-fn patterns() -> [(&'static str, &'static str, &'static Regex); 3] {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReplaceMode {
+    /// Replace the entire match (free-text finders).
+    Whole,
+    /// Replace only capture group 1 — leaves the form label intact.
+    Group1,
+}
+
+fn patterns() -> [(&'static str, &'static str, &'static Regex, ReplaceMode); 8] {
     [
-        ("thai_national_id", "[REDACTED_THAI_ID]", &RE_THAI_NATIONAL_ID),
-        ("thai_phone",       "[REDACTED_PHONE]",   &RE_THAI_PHONE),
-        ("email",            "[REDACTED_EMAIL]",   &RE_EMAIL),
+        // Tier 1a — free-text finders
+        ("thai_national_id", "[REDACTED_THAI_ID]",      &RE_THAI_NATIONAL_ID,    ReplaceMode::Whole),
+        ("thai_phone",       "[REDACTED_PHONE]",        &RE_THAI_PHONE,          ReplaceMode::Whole),
+        ("email",            "[REDACTED_EMAIL]",        &RE_EMAIL,               ReplaceMode::Whole),
+        // Tier 1b — anchored form-field patterns
+        ("patient_name",     "[REDACTED_PATIENT_NAME]", &RE_PATIENT_NAME_ANCHOR, ReplaceMode::Group1),
+        ("doctor_name",      "[REDACTED_DOCTOR_NAME]",  &RE_DOCTOR_NAME_ANCHOR,  ReplaceMode::Group1),
+        ("hn",               "[REDACTED_HN]",           &RE_HN_ANCHOR,           ReplaceMode::Group1),
+        ("license_no",       "[REDACTED_LICENSE_NO]",   &RE_LICENSE_NO_ANCHOR,   ReplaceMode::Group1),
+        ("thai_id_anchored", "[REDACTED_THAI_ID]",      &RE_THAI_ID_ANCHOR,      ReplaceMode::Group1),
     ]
 }
 
@@ -73,16 +137,47 @@ pub struct Detection {
 /// Apply all Tier 1 patterns to `text`. Returns redacted text + audit
 /// trail. **Always succeeds** — Tier 1 never raises; if a pattern
 /// matches nothing, no detection is emitted for that category.
+///
+/// Free-text patterns replace the whole match; anchored patterns keep
+/// the form label intact and replace only the captured value (so the
+/// LLM still knows "this is the patient name field" — useful structural
+/// context — but the actual name is gone).
 pub fn redact_text(text: &str) -> RedactionResult {
     let mut current = text.to_string();
     let mut detections = Vec::new();
 
-    for (category, placeholder, regex) in patterns() {
+    for (category, placeholder, regex, mode) in patterns() {
+        // Use captures_iter so we can count the matches up front. We need
+        // the count for the audit row and to decide whether to do the
+        // replace at all (avoids unnecessary allocation when nothing matches).
         let count = regex.find_iter(&current).count();
-        if count > 0 {
-            current = regex.replace_all(&current, placeholder).into_owned();
-            detections.push(Detection { category, count });
+        if count == 0 {
+            continue;
         }
+        match mode {
+            ReplaceMode::Whole => {
+                current = regex.replace_all(&current, placeholder).into_owned();
+            }
+            ReplaceMode::Group1 => {
+                // For anchored patterns: replace only group 1. We use a
+                // closure-based replacement so the rest of the match
+                // (the label, whitespace, colon) is preserved verbatim.
+                current = regex.replace_all(&current, |caps: &regex::Captures| {
+                    let whole = &caps[0];
+                    match caps.get(1) {
+                        Some(g1) => {
+                            // Preserve everything before group 1, swap in
+                            // the placeholder, then everything after.
+                            let start = g1.start() - caps.get(0).unwrap().start();
+                            let end = g1.end() - caps.get(0).unwrap().start();
+                            format!("{}{}{}", &whole[..start], placeholder, &whole[end..])
+                        }
+                        None => whole.to_string(),
+                    }
+                }).into_owned();
+            }
+        }
+        detections.push(Detection { category, count });
     }
 
     RedactionResult { redacted_text: current, detections }
@@ -354,6 +449,76 @@ mod tests {
         // Tier 1 only walks `messages` for now; legacy `prompt` field is
         // out of scope for v0 (caller should send chat-completions shape).
         assert!(dets.is_empty());
+    }
+
+    #[test]
+    fn anchored_patient_name_preserves_label() {
+        // Anchored detector keeps "Patient Name:" intact (form structure
+        // is useful context for the LLM); only the value is redacted.
+        let r = redact_text("Patient Name: นายสมชาย ใจดี\nDiagnosis: ไข้หวัด");
+        assert!(r.redacted_text.contains("Patient Name: [REDACTED_PATIENT_NAME]"));
+        assert!(r.redacted_text.contains("Diagnosis: ไข้หวัด"));
+        let det = r.detections.iter().find(|d| d.category == "patient_name").unwrap();
+        assert_eq!(det.count, 1);
+    }
+
+    #[test]
+    fn anchored_doctor_name_with_title() {
+        let r = redact_text("Doctor Name: พญ. อรวรรณ คงตระกูล\n");
+        assert!(r.redacted_text.contains("Doctor Name: [REDACTED_DOCTOR_NAME]"));
+    }
+
+    #[test]
+    fn anchored_hn_with_slash() {
+        let r = redact_text("HN: 59453/45");
+        assert!(r.redacted_text.contains("HN: [REDACTED_HN]"));
+        assert!(!r.redacted_text.contains("59453"));
+    }
+
+    #[test]
+    fn anchored_license_thai_prefix() {
+        let r = redact_text("License Number: ว. 16358\n");
+        assert!(r.redacted_text.contains("License Number: [REDACTED_LICENSE_NO]"));
+    }
+
+    #[test]
+    fn anchored_thai_id_via_label() {
+        // When the document uses the explicit "ThaiID:" label, the
+        // anchored detector beats the free-text finder to the punch.
+        let r = redact_text("ThaiID: 3470300256711\n");
+        assert!(r.redacted_text.contains("ThaiID: [REDACTED_THAI_ID]"));
+    }
+
+    #[test]
+    fn medical_certificate_full_redaction() {
+        // Synthetic shape — same field layout as the B-50h.0 fixture but
+        // with safe placeholder values (no real PII checked into git).
+        let input = "Patient Name: SAMPLE NAME\n\
+                     Doctor Name: SAMPLE DOCTOR\n\
+                     HN: 12345678\n\
+                     License Number: 99999\n\
+                     Diagnosis: ไข้หวัดใหญ่\n";
+        let r = redact_text(input);
+        let cats: std::collections::HashSet<_> =
+            r.detections.iter().map(|d| d.category).collect();
+        assert!(cats.contains("patient_name"));
+        assert!(cats.contains("doctor_name"));
+        assert!(cats.contains("hn"));
+        assert!(cats.contains("license_no"));
+        // Diagnosis line untouched — clinical content stays
+        assert!(r.redacted_text.contains("Diagnosis: ไข้หวัดใหญ่"));
+    }
+
+    #[test]
+    fn no_label_no_anchored_match() {
+        // Anchored patterns are HIGH-PRECISION by design — free-text
+        // mentions of "Patient" without a colon don't trigger redaction.
+        // The free-text finders (ID, phone, email) still catch their
+        // own patterns in arbitrary text.
+        let r = redact_text("The patient is doing well after surgery.");
+        let cats: std::collections::HashSet<_> =
+            r.detections.iter().map(|d| d.category).collect();
+        assert!(!cats.contains("patient_name"));
     }
 
     #[test]
