@@ -104,17 +104,24 @@ enum ReplaceMode {
 }
 
 fn patterns() -> [(&'static str, &'static str, &'static Regex, ReplaceMode); 8] {
+    // ORDER MATTERS: anchored patterns run FIRST so a "ThaiID:
+    // 1111111111110" hit is audited as `thai_id_anchored` (high-fidelity
+    // form context) rather than swallowed by the free-text
+    // `thai_national_id` finder. After anchored patterns redact their
+    // groups, the free-text finders mop up any bare PII that wasn't in
+    // a labelled field. This was caught by the leak-contract test —
+    // see `leak_contract_tests::every_positive_case_fires_expected_categories`.
     [
-        // Tier 1a — free-text finders
-        ("thai_national_id", "[REDACTED_THAI_ID]",      &RE_THAI_NATIONAL_ID,    ReplaceMode::Whole),
-        ("thai_phone",       "[REDACTED_PHONE]",        &RE_THAI_PHONE,          ReplaceMode::Whole),
-        ("email",            "[REDACTED_EMAIL]",        &RE_EMAIL,               ReplaceMode::Whole),
-        // Tier 1b — anchored form-field patterns
+        // Tier 1b — anchored form-field patterns (run first for audit fidelity)
         ("patient_name",     "[REDACTED_PATIENT_NAME]", &RE_PATIENT_NAME_ANCHOR, ReplaceMode::Group1),
         ("doctor_name",      "[REDACTED_DOCTOR_NAME]",  &RE_DOCTOR_NAME_ANCHOR,  ReplaceMode::Group1),
         ("hn",               "[REDACTED_HN]",           &RE_HN_ANCHOR,           ReplaceMode::Group1),
         ("license_no",       "[REDACTED_LICENSE_NO]",   &RE_LICENSE_NO_ANCHOR,   ReplaceMode::Group1),
         ("thai_id_anchored", "[REDACTED_THAI_ID]",      &RE_THAI_ID_ANCHOR,      ReplaceMode::Group1),
+        // Tier 1a — free-text finders (mop up unlabelled PII)
+        ("thai_national_id", "[REDACTED_THAI_ID]",      &RE_THAI_NATIONAL_ID,    ReplaceMode::Whole),
+        ("thai_phone",       "[REDACTED_PHONE]",        &RE_THAI_PHONE,          ReplaceMode::Whole),
+        ("email",            "[REDACTED_EMAIL]",        &RE_EMAIL,               ReplaceMode::Whole),
     ]
 }
 
@@ -316,6 +323,334 @@ pub fn should_fire_tier2(text: &str, tier1_pii_total: usize) -> bool {
     }
     // Cheap ASCII-only check: if every char is < 128, no Thai script.
     text.chars().any(|c| c as u32 >= 0x0E00 && c as u32 <= 0x0E7F)
+}
+
+// ─── Leak-contract tests ─────────────────────────────────────────────────
+//
+// Goal: prove that for every PII shape Skuggi claims to handle, the
+// redacted output contains ZERO of the original PII strings. This is the
+// pre-merge gate — if these assertions fire, PII can leak to external
+// LLMs and the change is not safe to ship.
+//
+// Mirrors the corpus shape seeded in Mimir migration
+// 20260512000000_pii_test_corpus.sql (asgard_insurance tenant). Markers
+// are synthetic-only.
+
+#[cfg(test)]
+mod leak_contract_tests {
+    use super::*;
+    use serde_json::json;
+
+    /// One leak-test case: a payload to send through Skuggi and a list of
+    /// substrings that MUST NOT appear in the output (the leak markers).
+    struct Case {
+        name: &'static str,
+        /// Substrings that, if present in the redacted output, prove PII
+        /// leaked. Includes both the raw PII and any per-row marker.
+        forbidden_substrings: &'static [&'static str],
+        /// Categories Skuggi must have detected. Empty = negative control.
+        expected_categories: &'static [&'static str],
+        /// Negative-control flag — Skuggi must produce ZERO detections.
+        is_negative: bool,
+        /// Prompt text to feed into redact_chat_body via a single-message
+        /// chat body.
+        prompt: &'static str,
+    }
+
+    /// Build the chat-body JSON shape `redact_chat_body` expects and run it.
+    /// Returns (redacted_text, detections).
+    fn run(prompt: &str) -> (String, Vec<Detection>) {
+        let mut body = json!({
+            "messages": [
+                {"role": "user", "content": prompt}
+            ]
+        });
+        let detections = redact_chat_body(&mut body);
+        let redacted = body["messages"][0]["content"].as_str().unwrap().to_string();
+        (redacted, detections)
+    }
+
+    fn corpus() -> Vec<Case> {
+        vec![
+            // ── Bucket 1: free-text positives ──────────────────────────
+            Case {
+                name: "free_text_thai_national_id",
+                prompt: "ผู้ป่วยรหัสประจำตัว 1-9001-00000-01-1 มา ER",
+                expected_categories: &["thai_national_id"],
+                forbidden_substrings: &["1-9001-00000-01-1"],
+                is_negative: false,
+            },
+            Case {
+                name: "free_text_thai_phone",
+                prompt: "ติดต่อกลับที่เบอร์ 081-555-0002",
+                expected_categories: &["thai_phone"],
+                forbidden_substrings: &["081-555-0002"],
+                is_negative: false,
+            },
+            Case {
+                name: "free_text_intl_phone",
+                prompt: "Contact +66 81 555 0004 anytime",
+                expected_categories: &["thai_phone"],
+                forbidden_substrings: &["+66 81 555 0004"],
+                is_negative: false,
+            },
+            Case {
+                name: "free_text_email",
+                prompt: "Forward report to pii-test-003@example.com",
+                expected_categories: &["email"],
+                forbidden_substrings: &["pii-test-003@example.com"],
+                is_negative: false,
+            },
+            // ── Bucket 2: anchored positives ───────────────────────────
+            Case {
+                name: "anchored_patient_name",
+                prompt: "Patient Name: SYNTHETIC_PATIENT_006\nDiagnosis: flu",
+                expected_categories: &["patient_name"],
+                forbidden_substrings: &["SYNTHETIC_PATIENT_006"],
+                is_negative: false,
+            },
+            Case {
+                name: "anchored_doctor_name",
+                prompt: "Doctor Name: SYNTHETIC_DOCTOR_007\nDiagnosis: pharyngitis",
+                expected_categories: &["doctor_name"],
+                forbidden_substrings: &["SYNTHETIC_DOCTOR_007"],
+                is_negative: false,
+            },
+            Case {
+                name: "anchored_hn",
+                prompt: "HN: 90008\nAdmission Date: 2026-05-12",
+                expected_categories: &["hn"],
+                forbidden_substrings: &["90008"],
+                is_negative: false,
+            },
+            Case {
+                name: "anchored_license",
+                prompt: "License Number: ว. 99009\nIssued: 2024",
+                expected_categories: &["license_no"],
+                forbidden_substrings: &["99009"],
+                is_negative: false,
+            },
+            Case {
+                name: "anchored_thai_id",
+                prompt: "ThaiID: 1111111111110\nCitizenship verified",
+                expected_categories: &["thai_id_anchored"],
+                forbidden_substrings: &["1111111111110"],
+                is_negative: false,
+            },
+            // ── Bucket 3: multi-category positives ─────────────────────
+            Case {
+                name: "form_4_anchored_categories",
+                prompt: "Patient Name: SYNTHETIC_PATIENT_011\nDoctor Name: SYNTHETIC_DOCTOR_011\nHN: 90011\nLicense Number: 99011\nDiagnosis: hypertension",
+                expected_categories: &["patient_name", "doctor_name", "hn", "license_no"],
+                forbidden_substrings: &[
+                    "SYNTHETIC_PATIENT_011",
+                    "SYNTHETIC_DOCTOR_011",
+                    "90011",
+                    "99011",
+                ],
+                is_negative: false,
+            },
+            Case {
+                // Known over-capture: `doctor_name` regex is non-greedy
+                // up to newline — when the line continues with email +
+                // phone, those get absorbed into group 1 and redacted
+                // under the `doctor_name` category. Leak contract still
+                // holds (all 3 PII substrings disappear from output),
+                // but audit fidelity collapses to a single category.
+                // Follow-up: span-based single-pass redaction would emit
+                // all 3 categories. For now this is the documented
+                // behavior; we trade audit granularity for redaction
+                // simplicity.
+                name: "anchored_plus_free_text_on_same_line",
+                prompt: "Reach out to Doctor Name: SYNTHETIC_DOCTOR_012 at pii-test-012@example.com or 081-555-0012",
+                expected_categories: &["doctor_name"],
+                forbidden_substrings: &[
+                    "SYNTHETIC_DOCTOR_012",
+                    "pii-test-012@example.com",
+                    "081-555-0012",
+                ],
+                is_negative: false,
+            },
+            Case {
+                name: "all_eight_categories_stress",
+                prompt: "Patient Name: SYNTHETIC_PATIENT_015\nDoctor Name: SYNTHETIC_DOCTOR_015\nHN: 90015\nLicense Number: 99015\nThaiID: 1111111111115\nphone 081-555-0015 email pii-test-015@example.com NatID 1-9001-00015-15-1",
+                expected_categories: &[
+                    "patient_name", "doctor_name", "hn", "license_no",
+                    "thai_id_anchored", "thai_national_id", "thai_phone", "email",
+                ],
+                forbidden_substrings: &[
+                    "SYNTHETIC_PATIENT_015",
+                    "SYNTHETIC_DOCTOR_015",
+                    "90015",
+                    "99015",
+                    "1111111111115",
+                    "081-555-0015",
+                    "pii-test-015@example.com",
+                    "1-9001-00015-15-1",
+                ],
+                is_negative: false,
+            },
+            // ── Bucket 4: insurance-domain shapes ──────────────────────
+            Case {
+                name: "insurance_claim_form",
+                prompt: "Claim ID: CL-2026-00016\nClaimant Patient Name: SYNTHETIC_PATIENT_016\nThaiID: 1111111111116\nDiagnosis: ICD K85.9",
+                expected_categories: &["patient_name", "thai_id_anchored"],
+                forbidden_substrings: &["SYNTHETIC_PATIENT_016", "1111111111116"],
+                is_negative: false,
+            },
+            Case {
+                name: "insurance_preauth",
+                prompt: "Pre-Authorization Request\nProvider Doctor Name: SYNTHETIC_DOCTOR_018\nLicense Number: ว. 99018\nClaimant HN: 90018",
+                expected_categories: &["doctor_name", "license_no", "hn"],
+                forbidden_substrings: &["SYNTHETIC_DOCTOR_018", "99018", "90018"],
+                is_negative: false,
+            },
+            // ── Bucket 5: negative controls (no PII expected) ──────────
+            Case {
+                name: "neg_clinical_no_anchor",
+                prompt: "Patient is stable on metoprolol 25mg twice daily. No complications.",
+                expected_categories: &[],
+                forbidden_substrings: &[],
+                is_negative: true,
+            },
+            Case {
+                name: "neg_lab_values",
+                prompt: "Lab results: glucose 95 mg/dL, sodium 140 mEq/L, potassium 4.1 mEq/L.",
+                expected_categories: &[],
+                forbidden_substrings: &[],
+                is_negative: true,
+            },
+            Case {
+                name: "neg_icd_codes",
+                prompt: "Diagnosis codes: ICD K85.9, J18.9, I10. Procedure codes: 1234, 5678, 91234.",
+                expected_categories: &[],
+                forbidden_substrings: &[],
+                is_negative: true,
+            },
+            Case {
+                name: "neg_iso_dates",
+                prompt: "Admit 2026-04-01, discharge 2026-04-05, follow-up 2026-04-19.",
+                expected_categories: &[],
+                forbidden_substrings: &[],
+                is_negative: true,
+            },
+            Case {
+                name: "neg_partial_label",
+                prompt: "The Doctor recommended physical therapy. Patient agreed to follow up.",
+                expected_categories: &[],
+                forbidden_substrings: &[],
+                is_negative: true,
+            },
+            Case {
+                name: "neg_vitals",
+                prompt: "Pain scale 7/10, RR 18, HR 72, BP 130/85.",
+                expected_categories: &[],
+                forbidden_substrings: &[],
+                is_negative: true,
+            },
+        ]
+    }
+
+    #[test]
+    fn no_pii_substring_survives_redaction() {
+        // For every case, run through redact_chat_body and assert no
+        // forbidden substring (= original PII or marker) survives.
+        let mut failures: Vec<String> = Vec::new();
+        for case in corpus() {
+            let (redacted, _detections) = run(case.prompt);
+            for forbidden in case.forbidden_substrings {
+                if redacted.contains(forbidden) {
+                    failures.push(format!(
+                        "LEAK in '{}': '{}' survived redaction.\n  Output: {}",
+                        case.name, forbidden, redacted
+                    ));
+                }
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "PII LEAK DETECTED in {} case(s):\n{}",
+            failures.len(),
+            failures.join("\n---\n"),
+        );
+    }
+
+    #[test]
+    fn every_positive_case_fires_expected_categories() {
+        // For every positive case, every expected category MUST be in
+        // detections. If a category is missing, Skuggi failed to catch it
+        // — which means it could leak in some other input shape.
+        let mut failures: Vec<String> = Vec::new();
+        for case in corpus() {
+            if case.is_negative {
+                continue;
+            }
+            let (_redacted, detections) = run(case.prompt);
+            let got: std::collections::HashSet<&str> =
+                detections.iter().map(|d| d.category).collect();
+            for expected in case.expected_categories {
+                if !got.contains(expected) {
+                    failures.push(format!(
+                        "MISS in '{}': expected category '{}' not detected. Got: {:?}",
+                        case.name, expected, got
+                    ));
+                }
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "Detection misses in {} case(s):\n{}",
+            failures.len(),
+            failures.join("\n"),
+        );
+    }
+
+    #[test]
+    fn negative_controls_have_zero_detections() {
+        // Negative controls must NOT trigger any pattern. Over-redaction
+        // breaks clinical context (e.g., a real "Patient is stable…"
+        // gets garbled).
+        let mut failures: Vec<String> = Vec::new();
+        for case in corpus() {
+            if !case.is_negative {
+                continue;
+            }
+            let (_redacted, detections) = run(case.prompt);
+            if !detections.is_empty() {
+                let cats: Vec<&str> = detections.iter().map(|d| d.category).collect();
+                failures.push(format!(
+                    "OVER-REDACT in '{}': expected no detections, got {:?}.\n  Prompt: {}",
+                    case.name, cats, case.prompt
+                ));
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "Over-redaction in {} negative control(s):\n{}",
+            failures.len(),
+            failures.join("\n---\n"),
+        );
+    }
+
+    #[test]
+    fn block_on_pii_path_would_reject_positives() {
+        // Skuggi's block-on-pii proxy mode rejects any request where
+        // detections.len() > 0. This test asserts the contract holds for
+        // every positive case — they would all be 422'd, which is what
+        // we want for high-stakes tenants.
+        for case in corpus() {
+            if case.is_negative {
+                continue;
+            }
+            let (_redacted, detections) = run(case.prompt);
+            let total: usize = detections.iter().map(|d| d.count).sum();
+            assert!(
+                total > 0,
+                "block-on-pii would FAIL OPEN for '{}': zero detections on a positive case",
+                case.name
+            );
+        }
+    }
 }
 
 #[cfg(test)]
