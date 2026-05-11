@@ -45,7 +45,12 @@ sysinfo = "0.38.4"
 # Native Embedding Engine (ONNX Runtime + CoreML on Apple Silicon)
 fastembed = "5.13"
 
-# 🌑 Skuggi PII Guardrail (Sprint 50b v0 scaffolding) — see ADR-007
+# 🌑 Skuggi PII Guardrail (Sprint 50b) — see ADR-007.
+# Regex set lives in the shared `skuggi-core` crate over in Mimir's
+# workspace; we pick it up via cross-repo path dep, same pattern Bifrost
+# uses for `mimir-core-ai`. Local `regex` + `once_cell` deps stay because
+# tier2 / metrics / other modules still use them.
+skuggi-core = { path = "../../Mimir/ro-ai-bridge/skuggi-core" }
 regex = "1.11"
 once_cell = "1.20"
 # Sprint 50b Day-1: per-tenant pii_mode lookup against Mimir's MariaDB.
