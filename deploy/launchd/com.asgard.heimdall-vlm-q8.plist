@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.asgard.heimdall-vlm-q8</string>
+
+    <!-- Sprint 51 — Typhoon-OCR MLX q8 served via mlx_vlm.server on 8083.
+         Escalation tier (65 TPS, 5GB peak) — Curator-routed for cases
+         where confidence < 0.7 or `high_stakes=true` on the request.
+         Heimdall gateway routes any model with prefix `MegawizCo/`
+         and suffix `-mlx-q8` to this port. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{PROJECT_DIR}}/.venv/bin/python</string>
+        <string>-m</string>
+        <string>mlx_vlm.server</string>
+        <string>--model</string>
+        <string>MegawizCo/typhoon-ocr-3b-mlx-q8</string>
+        <string>--port</string>
+        <string>8083</string>
+        <string>--host</string>
+        <string>127.0.0.1</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>{{PROJECT_DIR}}</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>{{HOME}}</string>
+        <key>TOKENIZERS_PARALLELISM</key>
+        <string>false</string>
+    </dict>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <key>ThrottleInterval</key>
+    <integer>15</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>{{PROJECT_DIR}}/logs/mlx-vlm-q8-stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{PROJECT_DIR}}/logs/mlx-vlm-q8-stderr.log</string>
+</dict>
+</plist>

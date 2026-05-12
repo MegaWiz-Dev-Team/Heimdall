@@ -130,6 +130,10 @@ async fn handle_embeddings(
     };
 
     match route {
+        ResolvedRoute::LocalVlm { .. } => Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": {"message": "VLM models are not valid for embeddings", "type": "model_error"}})),
+        )),
         ResolvedRoute::Local { model: _ } => {
             let engine = get_embedding_engine().await.map_err(|e| {
                 (
@@ -263,6 +267,10 @@ async fn handle_rerank(
     };
 
     match route {
+        ResolvedRoute::LocalVlm { .. } => Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": {"message": "VLM models are not valid for embeddings", "type": "model_error"}})),
+        )),
         ResolvedRoute::Local { model: _ } => {
             let engine = get_reranker_engine().await.map_err(|e| {
                 (

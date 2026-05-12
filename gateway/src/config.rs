@@ -14,6 +14,10 @@ pub struct AppConfig {
     pub embedding_host: String,
     /// Embedding server port
     pub embedding_port: u16,
+    /// VLM backend port for MegawizCo/typhoon-ocr-*-mlx-q4 (Sprint 51)
+    pub vlm_q4_port: u16,
+    /// VLM backend port for MegawizCo/typhoon-ocr-*-mlx-q8
+    pub vlm_q8_port: u16,
     /// API keys (comma-separated)
     pub api_keys: Vec<String>,
     /// Whether auth is enabled
@@ -66,6 +70,14 @@ impl AppConfig {
                 .unwrap_or_else(|_| "8001".into())
                 .parse()
                 .expect("EMBEDDING_PORT must be a number"),
+            vlm_q4_port: std::env::var("VLM_Q4_PORT")
+                .unwrap_or_else(|_| "8082".into())
+                .parse()
+                .expect("VLM_Q4_PORT must be a number"),
+            vlm_q8_port: std::env::var("VLM_Q8_PORT")
+                .unwrap_or_else(|_| "8083".into())
+                .parse()
+                .expect("VLM_Q8_PORT must be a number"),
             api_keys,
             auth_enabled,
             llm_model: std::env::var("LLM_MODEL").unwrap_or_else(|_| "".into()),
