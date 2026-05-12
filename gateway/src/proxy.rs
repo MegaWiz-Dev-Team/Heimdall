@@ -91,6 +91,9 @@ async fn proxy_handler(
         ResolvedRoute::Local { ref model } => {
             handle_local_proxy(state, method, uri, headers, body_bytes, path, model, start).await
         }
+        ResolvedRoute::LocalVlm { ref model, port } => {
+            handle_local_vlm_proxy(state, method, uri, headers, body_bytes, path, model, port, start).await
+        }
         ResolvedRoute::External {
             ref provider,
             ref model,
@@ -200,6 +203,41 @@ async fn handle_local_proxy(
         &backend_url,
         None, // No auth override for local
         "local",
+        model,
+        start,
+    )
+    .await
+}
+
+/// Forward request to a local MLX-VLM server on a custom port (Sprint 51).
+///
+/// Skips hot-swap (each VLM server is pinned to one model — q4 or q8 — and
+/// re-loading on each request would defeat the parallel-port pattern).
+async fn handle_local_vlm_proxy(
+    state: AppState,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body_bytes: Bytes,
+    path: &str,
+    model: &str,
+    port: u16,
+    start: std::time::Instant,
+) -> Result<Response, StatusCode> {
+    let target_base_url = format!("http://{}:{}", state.config.backend_host, port);
+    let backend_url = format!("{}{}", target_base_url, path);
+
+    tracing::info!("{} {} → {} (local-vlm, model={})", method, uri, backend_url, model);
+
+    forward_request(
+        &state,
+        method,
+        uri,
+        headers,
+        body_bytes,
+        &backend_url,
+        None,
+        "local-vlm",
         model,
         start,
     )

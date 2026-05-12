@@ -17,8 +17,14 @@ use crate::config::AppConfig;
 /// The result of route resolution: either forward locally or to an external provider.
 #[derive(Debug, Clone)]
 pub enum ResolvedRoute {
-    /// Forward to local MLX/llama.cpp backend (existing proxy behavior).
+    /// Forward to local MLX/llama.cpp backend (text LLM, default port 8081).
     Local { model: String },
+    /// Forward to a local MLX-VLM server on a different port.
+    /// Used for vision-language OCR models (Typhoon-OCR-MLX) — see Sprint 51
+    /// where we ship `mlx_vlm.server` on 8082/8083 alongside the text-LLM
+    /// backend. The proxy logic mirrors `Local` but talks to a different
+    /// port so the text + vision servers can run in parallel.
+    LocalVlm { model: String, port: u16 },
     /// Forward to an external OpenAI-compatible API.
     External {
         provider: String,
@@ -90,6 +96,25 @@ pub fn resolve_route(
             model: rest.to_string(),
             base_url: config.openai_base_url.clone(),
             api_key,
+        });
+    }
+
+    // ── Local VLM (Sprint 51 — Typhoon-OCR MLX served via mlx_vlm.server) ─
+    // Two ports live alongside the text-LLM backend on 8081:
+    //   - q4 (default, 3.5GB peak, fast): VLM_Q4_PORT (8082)
+    //   - q8 (escalation, 5GB peak, lower CER ceiling): VLM_Q8_PORT (8083)
+    // Match is suffix-based so future quants (e.g. q6) drop in by adding
+    // a port and the matching arm.
+    if model.ends_with("-mlx-q4") && model.starts_with("MegawizCo/") {
+        return Ok(ResolvedRoute::LocalVlm {
+            model: model.to_string(),
+            port: config.vlm_q4_port,
+        });
+    }
+    if model.ends_with("-mlx-q8") && model.starts_with("MegawizCo/") {
+        return Ok(ResolvedRoute::LocalVlm {
+            model: model.to_string(),
+            port: config.vlm_q8_port,
         });
     }
 

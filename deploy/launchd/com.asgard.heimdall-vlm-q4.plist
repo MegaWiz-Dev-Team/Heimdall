@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.asgard.heimdall-vlm-q4</string>
+
+    <!-- Sprint 51 — Typhoon-OCR MLX q4 served via mlx_vlm.server on 8082.
+         Throughput-default VLM (107 TPS, 3.5GB peak). Heimdall gateway
+         routes any model with prefix `MegawizCo/` and suffix `-mlx-q4`
+         to this port (see gateway/src/router.rs::resolve_route). -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{PROJECT_DIR}}/.venv/bin/python</string>
+        <string>-m</string>
+        <string>mlx_vlm.server</string>
+        <string>--model</string>
+        <string>MegawizCo/typhoon-ocr-3b-mlx-q4</string>
+        <string>--port</string>
+        <string>8082</string>
+        <string>--host</string>
+        <string>127.0.0.1</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>{{PROJECT_DIR}}</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>{{HOME}}</string>
+        <key>TOKENIZERS_PARALLELISM</key>
+        <string>false</string>
+    </dict>
+
+    <!-- Auto-restart on crash -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <!-- VLM model loading is fast (~1-2s) but throttle anyway -->
+    <key>ThrottleInterval</key>
+    <integer>15</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>{{PROJECT_DIR}}/logs/mlx-vlm-q4-stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{PROJECT_DIR}}/logs/mlx-vlm-q4-stderr.log</string>
+</dict>
+</plist>
