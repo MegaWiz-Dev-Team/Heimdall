@@ -40,3 +40,9 @@ models/
 *.safetensors
 *.gguf
 reports/
+
+# Backups & Local Config
+*.bak*
+.env.bak*
+deploy/launchd/
+{{HOME}}/
