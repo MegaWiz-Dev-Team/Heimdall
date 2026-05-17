@@ -37,14 +37,22 @@ pub async fn auth_middleware(
         return Ok(next.run(request).await);
     }
 
-    // Extract Bearer token
+    // Extract Bearer token.
+    //
+    // Parse per RFC 6750/7235: scheme name is CASE-INSENSITIVE
+    // ("Bearer" / "bearer" / "BEARER" all valid). We also `.trim()` so
+    // "Bearer    abc.def.ghi   " parses the same as "Bearer abc.def.ghi".
+    // This mirrors the Mimir-side parser at
+    // mimir-core-ai/src/middleware/dual_mode_auth.rs so the two services
+    // accept the same set of tokens — important for cross-service
+    // contract tests and for clients that hit both gateway and backend.
     let auth_header = request
         .headers()
         .get("authorization")
         .and_then(|v| v.to_str().ok());
 
-    let token = match auth_header {
-        Some(h) if h.starts_with("Bearer ") => &h[7..],
+    let token = match auth_header.and_then(parse_bearer_token) {
+        Some(t) if !t.is_empty() => t,
         _ => {
             metrics::counter!("auth_failure_total", "mode" => "missing").increment(1);
             return Err(StatusCode::UNAUTHORIZED);
@@ -94,6 +102,21 @@ pub async fn auth_middleware(
         metrics::counter!("auth_failure_total", "mode" => "static").increment(1);
         tracing::warn!(auth_mode = "static", "auth.failure");
         Err(StatusCode::UNAUTHORIZED)
+    }
+}
+
+/// Parse `Authorization: <scheme> <token>` per RFC 6750/7235.
+///
+/// Returns `Some(token)` iff the scheme is "Bearer" (case-insensitive) and
+/// at least one space follows it. Returns `None` for any other shape so the
+/// caller emits a single 401 path. Token is trimmed of surrounding
+/// whitespace.
+fn parse_bearer_token(header: &str) -> Option<&str> {
+    let (scheme, rest) = header.split_once(' ')?;
+    if scheme.eq_ignore_ascii_case("Bearer") {
+        Some(rest.trim())
+    } else {
+        None
     }
 }
 
