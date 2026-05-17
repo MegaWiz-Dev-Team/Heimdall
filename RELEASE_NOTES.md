@@ -1,5 +1,33 @@
 # Release Notes — Heimdall
 
+## v0.3.0 — Yggdrasil JWT Auth (2026-05-17)
+
+> Heimdall ฟัง Yggdrasil ได้แล้ว — Heimdall now speaks JWT.
+
+### ✨ New Features
+- **Yggdrasil JWT authentication** — Heimdall validates RS256-signed JWTs from a Zitadel-backed Yggdrasil IdP, with JWKS + OIDC discovery cached for 1 hour. Set `YGGDRASIL_ISSUER` and `JWT_AUDIENCE` to enable.
+- **Dual-mode auth** — Static `API_KEYS` (legacy) and JWT can coexist on the same gateway; routing is by token shape (`ey…` → JWT, else static). No flag-day cutover required.
+- **Mode-labeled metrics** — `auth_success_total{mode="jwt|static"}` and `auth_failure_total{mode="jwt|static|missing"}` for finer Prometheus dashboards.
+- **Audit-grade tracing** — Successful JWT validations log `sub`, `tenant`, and `scope` claims at INFO; Tyr filebeat can ingest these without extra wiring.
+
+### 🧪 Tests
+- 8 new unit tests covering valid token, expired (with leeway), wrong issuer, wrong audience, unknown `kid`, garbage input, JWKS cache hit, and OIDC discovery flow.
+- All 64 existing tests still pass.
+
+### 📦 Crate changes
+- gateway `0.5.0 → 0.6.0`
+- `+ jsonwebtoken = "9"`, `+ moka = "0.12"` (with `future`), `+ wiremock = "0.6"` (dev-dep)
+
+### 🔐 Security notes
+- Default jsonwebtoken leeway (60s clock-skew tolerance) is retained.
+- Static `API_KEYS` mode is **unchanged**; existing deployments are zero-impact unless `YGGDRASIL_ISSUER` is set.
+
+### 📖 Docs
+- `README.md` §2 rewritten with the dual-mode configuration matrix.
+- Companion guide in Yggdrasil repo: `docs/heimdall-key-gen.md`.
+
+---
+
 ## v0.4.0 — Production (2026-03-04)
 
 > Asgard เป็นของทุกคนแล้ว — Asgard belongs to everyone.

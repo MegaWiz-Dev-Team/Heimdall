@@ -1,6 +1,6 @@
 [package]
 name = "heimdall-gateway"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 description = "Heimdall — Guardian of the LLM realm. Rust API Gateway proxying to vllm-mlx."
 license = "MIT"
@@ -60,9 +60,17 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio",
 dashmap = "6.1"
 getrandom = "0.2"
 
+# Yggdrasil JWT validation (Sprint 52). RS256 verify via JWKS,
+# tokens issued by Zitadel-backed Yggdrasil. Dual-mode with static
+# API_KEYS — see gateway/src/auth_jwt.rs.
+jsonwebtoken = "9"
+moka = { version = "0.12", features = ["future"] }
+
 [dev-dependencies]
 # Testing
 tokio-test = "0.4"
+# Mock JWKS endpoint for JWT validation tests
+wiremock = "0.6"
 
 [profile.release]
 opt-level = 3

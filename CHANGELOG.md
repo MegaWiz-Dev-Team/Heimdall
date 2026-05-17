@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-05-17
+### Added
+- **Yggdrasil JWT authentication** (gateway 0.6.0). Heimdall now accepts RS256-signed JWTs issued by a Zitadel-backed Yggdrasil IdP alongside legacy static `API_KEYS`. JWKS and OIDC discovery responses are cached for 1 hour via `moka`. Audit events emit on `tracing` at INFO/WARN for Tyr ingestion.
+- New env vars `YGGDRASIL_ISSUER` and `JWT_AUDIENCE` enable JWT mode; both auth modes can coexist on the same gateway.
+- New module `gateway/src/auth_jwt.rs` with 8 unit tests covering: valid token, expired, wrong issuer, wrong audience, unknown kid, garbage input, JWKS caching, OIDC discovery.
+
+### Changed
+- `auth_middleware` is now dual-mode. Bearer tokens starting with `ey` (the b64 of a JWT header) are routed to JWT validation; everything else falls back to static-key compare.
+- Metrics `auth_success_total` and `auth_failure_total` now carry a `mode` label (`jwt` / `static` / `missing`).
+
+### Fixed
+- `auth.rs` and `router.rs` test fixtures were missing `vlm_q4_port` / `vlm_q8_port` after the Sprint 51 VLM port additions; `cargo test` compilation no longer requires manual edits.
+
 ## [0.2.0] - 2026-04-02
 ### Added
 - Created generic `upload_to_hf.py` script featuring `argparse` for standard public MLX model deployment to Hugging Face Hub.

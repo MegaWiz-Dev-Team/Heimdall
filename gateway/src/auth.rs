@@ -1,4 +1,10 @@
-/// API Key authentication middleware.
+/// Authentication middleware. Dual-mode:
+///   1. Static API_KEYS (legacy bearer compare, sub-µs)
+///   2. Yggdrasil JWT (RS256 via JWKS, ~0.1–0.3ms)
+///
+/// Heuristic: bearer tokens starting with `ey` (the base64 of a JWT header)
+/// are routed to JWT validation; everything else falls back to static-key
+/// compare. This lets both modes coexist without per-request config.
 
 use axum::{
     body::Body,
@@ -12,7 +18,7 @@ use crate::AppState;
 
 /// Middleware that checks for valid API key in the Authorization header.
 /// Skips auth for /health and /metrics endpoints.
-/// If no API keys are configured, all requests pass through.
+/// If neither static keys nor JWT mode are configured, all requests pass through.
 pub async fn auth_middleware(
     State(state): State<AppState>,
     request: Request<Body>,
@@ -24,8 +30,10 @@ pub async fn auth_middleware(
         return Ok(next.run(request).await);
     }
 
-    // If no API keys configured, skip auth
-    if !state.config.auth_enabled {
+    let jwt_enabled = state.jwt_validator.is_some();
+
+    // If neither auth mode is configured, skip auth entirely
+    if !state.config.auth_enabled && !jwt_enabled {
         return Ok(next.run(request).await);
     }
 
@@ -35,22 +43,57 @@ pub async fn auth_middleware(
         .get("authorization")
         .and_then(|v| v.to_str().ok());
 
-    match auth_header {
-        Some(header) if header.starts_with("Bearer ") => {
-            let token = &header[7..];
-            if state.config.api_keys.contains(&token.to_string()) {
-                metrics::counter!("auth_success_total").increment(1);
-                Ok(next.run(request).await)
-            } else {
-                metrics::counter!("auth_failure_total").increment(1);
-                tracing::warn!("Invalid API key attempt");
-                Err(StatusCode::UNAUTHORIZED)
+    let token = match auth_header {
+        Some(h) if h.starts_with("Bearer ") => &h[7..],
+        _ => {
+            metrics::counter!("auth_failure_total", "mode" => "missing").increment(1);
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    };
+
+    // Route by token shape: JWTs always start with "ey" (b64 of `{"alg"`...).
+    // Anything else falls through to static-key compare.
+    if jwt_enabled && token.starts_with("ey") {
+        match state
+            .jwt_validator
+            .as_ref()
+            .unwrap()
+            .validate(token)
+            .await
+        {
+            Ok(claims) => {
+                metrics::counter!("auth_success_total", "mode" => "jwt").increment(1);
+                tracing::info!(
+                    auth_mode = "jwt",
+                    sub = %claims.sub,
+                    tenant = claims.tenant_id.as_deref().unwrap_or("-"),
+                    scope = claims.scope.as_deref().unwrap_or("-"),
+                    "auth.success"
+                );
+                // Surface claims to downstream handlers via request extensions.
+                // axum extractor: `Extension<crate::auth_jwt::Claims>`.
+                // Cross-service contract (Bifrost/Mimir/Eir/Hermodr): use the
+                // same Claims type so a single TenantContext extractor works.
+                let mut request = request;
+                request.extensions_mut().insert(claims);
+                return Ok(next.run(request).await);
+            }
+            Err(e) => {
+                metrics::counter!("auth_failure_total", "mode" => "jwt").increment(1);
+                tracing::warn!(auth_mode = "jwt", error = %e, "auth.failure");
+                return Err(StatusCode::UNAUTHORIZED);
             }
         }
-        _ => {
-            metrics::counter!("auth_failure_total").increment(1);
-            Err(StatusCode::UNAUTHORIZED)
-        }
+    }
+
+    // Static-key fallback
+    if state.config.auth_enabled && state.config.api_keys.contains(&token.to_string()) {
+        metrics::counter!("auth_success_total", "mode" => "static").increment(1);
+        Ok(next.run(request).await)
+    } else {
+        metrics::counter!("auth_failure_total", "mode" => "static").increment(1);
+        tracing::warn!(auth_mode = "static", "auth.failure");
+        Err(StatusCode::UNAUTHORIZED)
     }
 }
 
@@ -83,11 +126,14 @@ mod tests {
                 gemini_base_url: "https://generativelanguage.googleapis.com/v1beta/openai".into(),
                 openai_api_key: None,
                 openai_base_url: "https://api.openai.com/v1".into(),
+                yggdrasil_issuer: None,
+                jwt_audience: None,
             }),
             http_client: reqwest::Client::new(),
             active_model: Arc::new(std::sync::RwLock::new(String::new())),
             swap_lock: Arc::new(tokio::sync::Mutex::new(())),
             tenant_cfg: None, // tests don't need tenant lookup
+            jwt_validator: None, // static-key tests only
         }
     }
 
