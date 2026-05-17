@@ -179,6 +179,8 @@ mod tests {
             backend_port: 8081,
             embedding_host: "127.0.0.1".into(),
             embedding_port: 8001,
+            vlm_q4_port: 8082,
+            vlm_q8_port: 8083,
             api_keys: vec![],
             auth_enabled: false,
             llm_model: "mlx-community/Qwen3.5-35B-A3B-4bit".into(),

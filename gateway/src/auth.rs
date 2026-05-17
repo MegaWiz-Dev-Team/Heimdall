@@ -71,6 +71,8 @@ mod tests {
                 backend_port: 8000,
                 embedding_host: "127.0.0.1".into(),
                 embedding_port: 8001,
+                vlm_q4_port: 8082,
+                vlm_q8_port: 8083,
                 api_keys: keys.clone(),
                 auth_enabled: !keys.is_empty(),
                 llm_model: "".into(),
