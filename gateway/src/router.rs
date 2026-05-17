@@ -192,6 +192,8 @@ mod tests {
             gemini_base_url: "https://generativelanguage.googleapis.com/v1beta/openai".into(),
             openai_api_key: Some("sk-proj-test-key".into()),
             openai_base_url: "https://api.openai.com/v1".into(),
+            yggdrasil_issuer: None,
+            jwt_audience: None,
         }
     }
 

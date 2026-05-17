@@ -1,4 +1,5 @@
 mod auth;
+mod auth_jwt;
 mod embedding;
 mod config;
 mod health;
@@ -34,6 +35,9 @@ pub struct AppState {
     /// 🌑 Skuggi tenant config cache. `None` when MARIADB_URL is unset
     /// (dev/test mode); proxy falls back to env-var SKUGGI_MODE.
     pub tenant_cfg: Option<Arc<tenant_config::TenantConfigCache>>,
+    /// 🌳 Yggdrasil JWT validator. `None` when YGGDRASIL_ISSUER/JWT_AUDIENCE
+    /// are unset; auth falls back to static API_KEYS only.
+    pub jwt_validator: Option<Arc<auth_jwt::JwtValidator>>,
 }
 
 #[tokio::main]
@@ -114,12 +118,27 @@ async fn main() {
         }
     };
 
+    let jwt_validator = if config.jwt_enabled() {
+        let issuer = config.yggdrasil_issuer.clone().unwrap();
+        let audience = config.jwt_audience.clone().unwrap();
+        tracing::info!(
+            issuer = %issuer,
+            audience = %audience,
+            "🌳 Yggdrasil JWT validator enabled"
+        );
+        Some(Arc::new(auth_jwt::JwtValidator::new(issuer, audience)))
+    } else {
+        tracing::info!("🌳 Yggdrasil JWT disabled (YGGDRASIL_ISSUER/JWT_AUDIENCE unset); static API_KEYS only");
+        None
+    };
+
     let state = AppState {
         config: Arc::new(config.clone()),
         http_client,
         active_model,
         swap_lock,
         tenant_cfg,
+        jwt_validator,
     };
 
     // Build router

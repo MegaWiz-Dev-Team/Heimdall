@@ -40,6 +40,13 @@ pub struct AppConfig {
     pub openai_api_key: Option<String>,
     /// OpenAI base URL
     pub openai_base_url: String,
+
+    // ── Yggdrasil JWT Auth (Sprint 52) ─────────────────────────────────
+    /// OIDC issuer URL (Yggdrasil/Zitadel). Set to enable JWT validation
+    /// alongside static API_KEYS. Empty = JWT mode off (legacy only).
+    pub yggdrasil_issuer: Option<String>,
+    /// Expected `aud` claim in incoming JWTs (typically "heimdall").
+    pub jwt_audience: Option<String>,
 }
 
 impl AppConfig {
@@ -93,7 +100,17 @@ impl AppConfig {
             openai_api_key: std::env::var("OPENAI_API_KEY").ok().filter(|s| !s.is_empty()),
             openai_base_url: std::env::var("OPENAI_BASE_URL")
                 .unwrap_or_else(|_| "https://api.openai.com/v1".into()),
+
+            yggdrasil_issuer: std::env::var("YGGDRASIL_ISSUER")
+                .ok()
+                .filter(|s| !s.is_empty()),
+            jwt_audience: std::env::var("JWT_AUDIENCE").ok().filter(|s| !s.is_empty()),
         }
+    }
+
+    /// JWT validation is enabled iff both issuer and audience are configured.
+    pub fn jwt_enabled(&self) -> bool {
+        self.yggdrasil_issuer.is_some() && self.jwt_audience.is_some()
     }
 
     /// Get the full backend URL

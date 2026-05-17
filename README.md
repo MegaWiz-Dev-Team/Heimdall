@@ -154,14 +154,37 @@ BACKEND_HOST=127.0.0.1     # Destination engine IP
 BACKEND_PORT=8081          # Destination engine port (e.g., MLX or Ollama)
 ```
 
-### 2. Authentication (API Keys)
-Heimdall includes zero-cost, in-memory API key validation. 
+### 2. Authentication (Dual-mode)
+
+Heimdall accepts **two** bearer-token formats, which can be enabled independently or together.
+
+#### 2a. Static API Keys (legacy, zero-cost)
 ```env
 # Comma-separated list of allowed Bearer tokens
 API_KEYS=sk-mimir-vip-1234,sk-dev-admin-9999
 ```
 * **Enabled**: By providing keys, Heimdall rejects unauthorized requests instantly.
 * **Disabled**: By commenting out or leaving `API_KEYS` empty, Heimdall runs as a public API.
+
+#### 2b. Yggdrasil JWT (RS256, OIDC, since gateway 0.6.0)
+```env
+# Enable JWT validation against a Yggdrasil/Zitadel issuer
+YGGDRASIL_ISSUER=https://auth.asgard.internal
+JWT_AUDIENCE=heimdall
+```
+* JWKS + OIDC discovery are cached for 1h (auto-refresh on miss).
+* Tokens issued by Yggdrasil's Management API or Zitadel directly are accepted.
+* Tenant id (`urn:zitadel:iam:org:id`), `scope`, and `roles` claims are surfaced in audit logs for Tyr ingestion.
+
+#### Token routing
+
+When both modes are enabled, Heimdall routes by token shape:
+| Token prefix | Validator |
+| --- | --- |
+| `ey…` (JWT) | Yggdrasil JWT validator |
+| anything else | Static `API_KEYS` compare |
+
+This lets you migrate clients incrementally — no flag-day cutover required.
 
 
 ## Benchmarks
