@@ -21,7 +21,7 @@ use crate::telemetry;
 use crate::AppState;
 
 /// Proxy handler — routes request based on model prefix, then forwards and streams response.
-#[tracing::instrument(skip(state, headers, body), fields(method = %method, uri = %uri, model = tracing::field::Empty))]
+#[tracing::instrument(skip(state, headers, body), fields(method = %method, uri = %uri, model = tracing::field::Empty, caller = tracing::field::Empty, request_id = tracing::field::Empty))]
 async fn proxy_handler(
     State(state): State<AppState>,
     method: Method,
@@ -60,6 +60,16 @@ async fn proxy_handler(
 
     if let Some(ref model) = requested_model {
         tracing::Span::current().record("model", model.as_str());
+    }
+
+    // Record caller attribution on the exported span so downstream consumers
+    // (heimdall-trace / Laminar) can filter by originating service (e.g.
+    // `caller=iris`) and join all spans of one pipeline run by `request_id`.
+    if let Some(caller) = headers.get("x-asgard-caller").and_then(|v| v.to_str().ok()) {
+        tracing::Span::current().record("caller", caller);
+    }
+    if let Some(req_id) = headers.get("x-request-id").and_then(|v| v.to_str().ok()) {
+        tracing::Span::current().record("request_id", req_id);
     }
 
     // Extract tenant-specific provider key from header

@@ -46,13 +46,18 @@ async fn main() {
     let _ = dotenvy::from_path("../.env");
     let _ = dotenvy::dotenv();
 
-    // Initialize OpenTelemetry Tracing
+    // Initialize OpenTelemetry Tracing. Endpoint is configurable via the
+    // standard OTEL_EXPORTER_OTLP_ENDPOINT env var so a native (non-cluster)
+    // gateway can target a host-reachable collector address — the in-cluster
+    // DNS default is unresolvable from the host.
+    let otlp_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
+        .unwrap_or_else(|_| "http://otel-collector.infra.svc:4317".to_string());
     let tracer = opentelemetry_otlp::new_pipeline()
         .tracing()
         .with_exporter(
             opentelemetry_otlp::new_exporter()
                 .tonic()
-                .with_endpoint("http://otel-collector.infra.svc:4317"),
+                .with_endpoint(otlp_endpoint),
         )
         .install_batch(opentelemetry_sdk::runtime::Tokio)
         .expect("Failed to initialize OTLP Tracer");
