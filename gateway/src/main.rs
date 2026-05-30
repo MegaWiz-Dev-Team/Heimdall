@@ -88,6 +88,23 @@ async fn main() {
     let active_model = Arc::new(std::sync::RwLock::new(config.llm_model.clone()));
     let swap_lock = Arc::new(tokio::sync::Mutex::new(()));
 
+    // 🌑 Skuggi rule set. Loaded eagerly so the active detector count is
+    // logged at boot and a bad `SKUGGI_RULES_PATH` surfaces here rather than
+    // on the first proxied request. Falls back to the builtin set when the
+    // env var is unset (dev/public builds); commercial/on-prem boxes point it
+    // at a private skuggi-rules.toml. See ADR-023 / OPEN_CORE_POLICY.md.
+    {
+        let rule_count = skuggi_core::init_default_rules();
+        match std::env::var("SKUGGI_RULES_PATH") {
+            Ok(p) if !p.trim().is_empty() => {
+                tracing::info!("🌑 Skuggi rule set loaded from {p} ({rule_count} detectors)");
+            }
+            _ => {
+                tracing::info!("🌑 Skuggi using builtin rule set ({rule_count} detectors)");
+            }
+        }
+    }
+
     // 🌑 Skuggi tenant config cache. Optional — Heimdall starts fine
     // without MariaDB (e.g. dev / unit-test environments); the proxy
     // falls back to env-var SKUGGI_MODE in that case.
