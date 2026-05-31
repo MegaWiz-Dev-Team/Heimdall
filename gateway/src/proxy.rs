@@ -203,6 +203,17 @@ async fn handle_local_proxy(
         }
     }
 
+    // Inject `chat_template_kwargs.enable_thinking: false` so thinking-mode
+    // chat templates (Qwen3, Gemma3+ with a4b variants) emit the answer in
+    // `message.content` instead of `message.reasoning`. Caller-supplied
+    // `chat_template_kwargs.enable_thinking` always wins; non-JSON or
+    // non-chat payloads pass through untouched.
+    let body_bytes = if is_completion_path {
+        inject_disable_thinking_default(body_bytes)
+    } else {
+        body_bytes
+    };
+
     // Forward to local backend
     forward_request(
         &state,
@@ -217,6 +228,40 @@ async fn handle_local_proxy(
         start,
     )
     .await
+}
+
+/// Inject `chat_template_kwargs.enable_thinking: false` into a JSON
+/// chat-completion body if (and only if) the caller hasn't already set it.
+///
+/// Returns the original bytes unchanged when the body isn't parseable JSON,
+/// isn't a JSON object, or already carries an explicit `enable_thinking`.
+fn inject_disable_thinking_default(body_bytes: Bytes) -> Bytes {
+    let Ok(mut json) = serde_json::from_slice::<serde_json::Value>(&body_bytes) else {
+        return body_bytes;
+    };
+    let Some(obj) = json.as_object_mut() else {
+        return body_bytes;
+    };
+    // Only act on chat-completion shape (must carry `messages`).
+    if !obj.contains_key("messages") {
+        return body_bytes;
+    }
+
+    let kwargs = obj
+        .entry("chat_template_kwargs".to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    let Some(kwargs_obj) = kwargs.as_object_mut() else {
+        // Caller passed a non-object — leave their value alone.
+        return serde_json::to_vec(&json).map(Bytes::from).unwrap_or(body_bytes);
+    };
+    if !kwargs_obj.contains_key("enable_thinking") {
+        kwargs_obj.insert(
+            "enable_thinking".to_string(),
+            serde_json::Value::Bool(false),
+        );
+    }
+
+    serde_json::to_vec(&json).map(Bytes::from).unwrap_or(body_bytes)
 }
 
 /// Forward request to a local MLX-VLM server on a custom port (Sprint 51).
