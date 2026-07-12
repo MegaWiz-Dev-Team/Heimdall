@@ -57,7 +57,7 @@ Reproduce: `scripts/bench/loadtest.py` (see `scripts/bench/*.json` for raw runs)
 
 ---
 
-## Tier 2 — KV / prompt-prefix reuse  📋 measured, implementation deferred
+## Tier 2 — KV / prompt-prefix reuse via multi-slot affinity routing  ✅ implemented (prototype)
 
 **The win is real and large.** Re-using the KV of a shared system prompt
 (2307 tokens) instead of re-prefilling it:
@@ -93,3 +93,35 @@ gemma slot is ~15 GB, so a 64 GB box holds ~2–3 slots. Options when picked up:
    traffic to keep one conversation warm.
 
 Reproduce the win + capacity probe: `scripts/bench/prefix_probe.py`.
+
+### Implemented: affinity routing (`LOCAL_SLOTS`)
+
+`config.rs` + `proxy.rs`: when `LOCAL_SLOTS` lists >1 local backend port, a
+chat/completion is routed to `slots[fnv(affinity_key) % n]`, where
+`affinity_key` is `X-Tenant-Id` / `X-Session-Id` / `X-Asgard-Caller` if
+present, else the system-prompt text. Same tenant → same slot → warm KV.
+Hot-swap is skipped under slots (every slot pins the same model). Empty
+`LOCAL_SLOTS` = unchanged single-backend behavior (prod today). Unit-tested;
+deterministic + spreads across slots.
+
+**Prototype benchmark** (2 slots = 2× `gemma-3-1b`, RAM-safe; the single MLX
+backend's prompt cache holds a fixed token budget, so many interleaved tenants
+thrash it):
+
+| 8 interleaved tenants (~1.5k-tok prompts) | prefix-cache hit rate | mean latency |
+|---|---|---|
+| single slot | **0 %** (thrash) | 0.59 s |
+| **2 slots + affinity** | **100 %** | **0.17 s** (3.5×) |
+
+Affinity doubles effective warm-cache capacity; on the real gemma-4-26b the
+warm/cold gap is ~11× (0.36 s vs 3.97 s), so the routed win is larger there.
+
+**Production is NOT deployed** — it is the RAM decision: 2× gemma-4-26b ≈ 30 GB
+on a 64 GB box already carrying OrbStack (~13 GB) + ~13 GB swap in use. Pick one
+before enabling in prod:
+- **llama.cpp `--slots N`** — one process, N KV slots, model loaded once
+  (~15 GB + small per-slot KV). RAM-efficient; recommended. Gateway maps
+  tenant → `cache_slot`.
+- **2× mlx** only after freeing RAM (e.g. pausing OrbStack) — costs 2× the model.
+
+Reproduce: `scripts/bench/mt_bench.py` (`LOCAL_SLOTS=8085,8086` vs `8085`).

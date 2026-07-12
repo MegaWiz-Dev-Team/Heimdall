@@ -18,6 +18,11 @@ pub struct AppConfig {
     pub vlm_q4_port: u16,
     /// VLM backend port for MegawizCo/typhoon-ocr-*-mlx-q8
     pub vlm_q8_port: u16,
+    /// Tier-2: local backend KV slots. When non-empty, chat/completions to the
+    /// local text backend are routed by tenant/session affinity across these
+    /// ports (each an identical model instance) so every hot tenant keeps its
+    /// own warm prompt-prefix KV. Empty = single-backend (backend_port) as before.
+    pub local_slots: Vec<u16>,
     /// API keys (comma-separated)
     pub api_keys: Vec<String>,
     /// Whether auth is enabled
@@ -85,6 +90,11 @@ impl AppConfig {
                 .unwrap_or_else(|_| "8083".into())
                 .parse()
                 .expect("VLM_Q8_PORT must be a number"),
+            local_slots: std::env::var("LOCAL_SLOTS")
+                .unwrap_or_default()
+                .split(',')
+                .filter_map(|s| s.trim().parse::<u16>().ok())
+                .collect(),
             api_keys,
             auth_enabled,
             llm_model: std::env::var("LLM_MODEL").unwrap_or_else(|_| "".into()),

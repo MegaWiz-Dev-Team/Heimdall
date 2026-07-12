@@ -181,6 +181,7 @@ mod tests {
             embedding_port: 8001,
             vlm_q4_port: 8082,
             vlm_q8_port: 8083,
+            local_slots: vec![],
             api_keys: vec![],
             auth_enabled: false,
             llm_model: "mlx-community/Qwen3.5-35B-A3B-4bit".into(),

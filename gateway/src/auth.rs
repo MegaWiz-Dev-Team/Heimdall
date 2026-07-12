@@ -139,6 +139,7 @@ mod tests {
                 embedding_port: 8001,
                 vlm_q4_port: 8082,
                 vlm_q8_port: 8083,
+                local_slots: vec![],
                 api_keys: keys.clone(),
                 auth_enabled: !keys.is_empty(),
                 llm_model: "".into(),

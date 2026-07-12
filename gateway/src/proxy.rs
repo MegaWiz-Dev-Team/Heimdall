@@ -48,6 +48,57 @@ fn overloaded_response(
         .unwrap()
 }
 
+/// Tier-2 affinity key: the identity that should stick to one KV slot.
+/// Prefers an explicit tenant/session header; otherwise falls back to the
+/// system prompt itself (the thing whose KV we want to keep warm).
+fn affinity_key(headers: &HeaderMap, body: &Bytes) -> String {
+    for h in ["x-tenant-id", "x-session-id", "x-asgard-caller"] {
+        if let Some(v) = headers.get(h).and_then(|v| v.to_str().ok()) {
+            if !v.is_empty() {
+                return format!("{h}={v}");
+            }
+        }
+    }
+    if let Ok(json) = serde_json::from_slice::<serde_json::Value>(body) {
+        if let Some(msgs) = json.get("messages").and_then(|m| m.as_array()) {
+            for m in msgs {
+                if m.get("role").and_then(|r| r.as_str()) == Some("system") {
+                    if let Some(c) = m.get("content").and_then(|c| c.as_str()) {
+                        return format!("sys={c}");
+                    }
+                }
+            }
+        }
+    }
+    "default".to_string()
+}
+
+/// Deterministic slot pick (FNV-1a). Same key → same slot → warm KV.
+fn pick_slot(key: &str, slots: &[u16]) -> u16 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in key.as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    slots[(h as usize) % slots.len()]
+}
+
+#[cfg(test)]
+mod slot_tests {
+    use super::*;
+    #[test]
+    fn slot_pick_deterministic_in_range_and_spreads() {
+        let slots = [8085u16, 8086];
+        // same key → same slot, always
+        assert_eq!(pick_slot("tenant=A", &slots), pick_slot("tenant=A", &slots));
+        assert!(slots.contains(&pick_slot("x-tenant-id=A", &slots)));
+        // across many keys both slots get exercised (good spread)
+        let used: std::collections::HashSet<u16> =
+            (0..50).map(|i| pick_slot(&format!("t{i}"), &slots)).collect();
+        assert_eq!(used.len(), 2, "both slots should be used across 50 keys");
+    }
+}
+
 /// Proxy handler — routes request based on model prefix, then forwards and streams response.
 #[tracing::instrument(skip(state, headers, body), fields(method = %method, uri = %uri, model = tracing::field::Empty, caller = tracing::field::Empty, request_id = tracing::field::Empty))]
 async fn proxy_handler(
@@ -167,18 +218,31 @@ async fn handle_local_proxy(
     model: &str,
     start: std::time::Instant,
 ) -> Result<Response, StatusCode> {
-    let target_base_url = state.config.backend_url();
-    let backend_url = format!("{}{}", target_base_url, path);
-
-    tracing::info!("{} {} → {} (local)", method, uri, backend_url);
-
-    // Hot-swap logic: check if the request asks for a different MLX model
     let is_completion_path = path == "/chat/completions"
         || path == "/completions"
         || path == "/v1/chat/completions"
         || path == "/v1/completions";
 
-    if is_completion_path && !model.is_empty() {
+    // Tier-2: route by tenant/session affinity across local KV slots so each
+    // hot tenant keeps its own warm prompt-prefix. Empty LOCAL_SLOTS = the
+    // original single-backend path. All slots serve the same model, so hot-swap
+    // is skipped when slots are active.
+    let use_slots = !state.config.local_slots.is_empty() && is_completion_path;
+    let target_base_url = if use_slots {
+        let key = affinity_key(&headers, &body_bytes);
+        let port = pick_slot(&key, &state.config.local_slots);
+        tracing::info!("🎯 slot route → :{} (affinity key len={})", port, key.len());
+        format!("http://{}:{}", state.config.backend_host, port)
+    } else {
+        state.config.backend_url()
+    };
+    let backend_url = format!("{}{}", target_base_url, path);
+
+    tracing::info!("{} {} → {} (local)", method, uri, backend_url);
+
+    // Hot-swap logic: check if the request asks for a different MLX model
+    // (skipped under multi-slot — every slot is pinned to the same model).
+    if !use_slots && is_completion_path && !model.is_empty() {
         let current_model = {
             let lock = state.active_model.read().unwrap();
             (*lock).clone()
