@@ -1,0 +1,31 @@
+{
+  "tag": "t1_c32",
+  "url": "http://127.0.0.1:8090/v1/chat/completions",
+  "concurrency": 32,
+  "requests": 32,
+  "max_tokens": 8,
+  "wall_s": 4.398,
+  "throughput_rps": 7.276,
+  "ok_2xx": 32,
+  "client_4xx": 0,
+  "server_5xx": 0,
+  "conn_err": 0,
+  "n_429": 0,
+  "n_503": 0,
+  "ok_latency_s": {
+    "min": 2.051,
+    "p50": 3.218,
+    "p90": 4.377,
+    "p95": 4.385,
+    "p99": 4.388,
+    "max": 4.388,
+    "mean": 3.22
+  },
+  "all_latency_p99_s": 4.388,
+  "queue_wait_ms": {
+    "n": 32,
+    "p50": 1022.5,
+    "p99": 2187.7,
+    "max": 2188.0
+  }
+}

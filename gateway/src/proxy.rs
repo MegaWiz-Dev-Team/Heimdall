@@ -16,9 +16,37 @@ use axum::{
 use bytes::Bytes;
 use futures::StreamExt;
 
+use crate::admission::{AdmitGuard, Admitted};
 use crate::router::{self, ResolvedRoute};
 use crate::telemetry;
 use crate::AppState;
+
+/// Build an OpenAI-shaped overload error (429/503) for shed requests.
+/// Retryable: carries `Retry-After` so well-behaved clients back off instead
+/// of hammering a saturated backend.
+fn overloaded_response(
+    status: StatusCode,
+    err_type: &str,
+    message: &str,
+    retry_after_s: u64,
+) -> Response {
+    let body = serde_json::json!({
+        "error": {
+            "message": message,
+            "type": err_type,
+            "code": err_type,
+            "param": serde_json::Value::Null,
+        }
+    })
+    .to_string();
+    metrics::counter!("proxy_shed_total", "type" => err_type.to_string()).increment(1);
+    Response::builder()
+        .status(status)
+        .header("content-type", "application/json")
+        .header("retry-after", retry_after_s.to_string())
+        .body(Body::from(body))
+        .unwrap()
+}
 
 /// Proxy handler — routes request based on model prefix, then forwards and streams response.
 #[tracing::instrument(skip(state, headers, body), fields(method = %method, uri = %uri, model = tracing::field::Empty, caller = tracing::field::Empty, request_id = tracing::field::Empty))]
@@ -214,6 +242,36 @@ async fn handle_local_proxy(
         body_bytes
     };
 
+    // ── Tier 1: bounded FIFO admission control ──────────────────────────
+    // Gate only the generation endpoints (the batch-limited work). Cheap
+    // passthrough paths like /v1/models are never queued. External providers
+    // are gated by their own capacity, not here.
+    let admit = if is_completion_path {
+        match state.admission.admit().await {
+            Admitted::Ok(guard) => Some(guard),
+            Admitted::Full => {
+                tracing::warn!("🚦 admission: queue full → 429 (depth={})", state.admission.depth());
+                return Ok(overloaded_response(
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "rate_limit_exceeded",
+                    "Backend at capacity: too many concurrent requests queued. Retry shortly.",
+                    2,
+                ));
+            }
+            Admitted::Timeout => {
+                tracing::warn!("🚦 admission: queue wait timed out → 503");
+                return Ok(overloaded_response(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "server_overloaded",
+                    "Backend busy: timed out waiting for a generation slot. Retry shortly.",
+                    5,
+                ));
+            }
+        }
+    } else {
+        None
+    };
+
     // Forward to local backend
     forward_request(
         &state,
@@ -226,6 +284,7 @@ async fn handle_local_proxy(
         "local",
         model,
         start,
+        admit,
     )
     .await
 }
@@ -295,6 +354,7 @@ async fn handle_local_vlm_proxy(
         "local-vlm",
         model,
         start,
+        None, // VLM has its own dedicated backend process; not gated in this cycle
     )
     .await
 }
@@ -552,6 +612,7 @@ async fn handle_external_proxy(
         provider,
         model,
         start,
+        None, // external providers manage their own capacity
     )
     .await
 }
@@ -568,7 +629,10 @@ async fn forward_request(
     provider: &str,
     model: &str,
     start: std::time::Instant,
+    admit: Option<AdmitGuard>,
 ) -> Result<Response, StatusCode> {
+    // Queue wait attributed to admission control (0 when ungated / uncontended).
+    let queue_wait_ms = admit.as_ref().map(|g| g.queue_wait.as_millis() as u64);
     // Build the proxied request
     let mut req_builder = state
         .http_client
@@ -631,7 +695,12 @@ async fn forward_request(
             elapsed.as_millis()
         );
 
-        let stream = backend_resp.bytes_stream().map(|chunk| {
+        // Hold the admission guard for the WHOLE stream: `admit` is moved into
+        // the per-chunk closure, so the permit/depth are released only when the
+        // response body is fully consumed and dropped (not at first byte).
+        let admit_hold = admit;
+        let stream = backend_resp.bytes_stream().map(move |chunk| {
+            let _keep = &admit_hold; // keep the guard alive until stream end
             chunk
                 .map(|b| axum::body::Bytes::from(b.to_vec()))
                 .map_err(|e| {
@@ -649,6 +718,9 @@ async fn forward_request(
             if key_str != "transfer-encoding" {
                 response = response.header(key.clone(), value.clone());
             }
+        }
+        if let Some(qw) = queue_wait_ms {
+            response = response.header("x-heimdall-queue-wait-ms", qw.to_string());
         }
 
         Ok(response.body(body).unwrap())
@@ -685,13 +757,18 @@ async fn forward_request(
 
         for (key, value) in resp_headers.iter() {
             let key_str = key.as_str();
-            if key_str != "transfer-encoding" 
-                && key_str != "content-encoding" 
-                && key_str != "content-length" 
+            if key_str != "transfer-encoding"
+                && key_str != "content-encoding"
+                && key_str != "content-length"
             {
                 response = response.header(key.clone(), value.clone());
             }
         }
+        if let Some(qw) = queue_wait_ms {
+            response = response.header("x-heimdall-queue-wait-ms", qw.to_string());
+        }
+        // `admit` (if any) is dropped here, after the full backend body was
+        // read above — so the permit is held for the entire generation.
 
         Ok(response
             .body(Body::from(Bytes::from(response_body.to_vec())))

@@ -1,0 +1,31 @@
+{
+  "tag": "baseline",
+  "url": "http://127.0.0.1:8090/v1/chat/completions",
+  "concurrency": 16,
+  "requests": 32,
+  "max_tokens": 8,
+  "wall_s": 4.431,
+  "throughput_rps": 7.223,
+  "ok_2xx": 32,
+  "client_4xx": 0,
+  "server_5xx": 0,
+  "conn_err": 0,
+  "n_429": 0,
+  "n_503": 0,
+  "ok_latency_s": {
+    "min": 2.078,
+    "p50": 2.207,
+    "p90": 2.209,
+    "p95": 2.214,
+    "p99": 2.218,
+    "max": 2.219,
+    "mean": 2.179
+  },
+  "all_latency_p99_s": 2.218,
+  "queue_wait_ms": {
+    "n": 0,
+    "p50": null,
+    "p99": null,
+    "max": null
+  }
+}

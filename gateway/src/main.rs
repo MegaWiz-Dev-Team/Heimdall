@@ -1,3 +1,4 @@
+mod admission;
 mod auth;
 mod auth_jwt;
 mod embedding;
@@ -32,6 +33,8 @@ pub struct AppState {
     pub http_client: reqwest::Client,
     pub active_model: Arc<std::sync::RwLock<String>>,
     pub swap_lock: Arc<tokio::sync::Mutex<()>>,
+    /// Bounded FIFO admission control for the local backend (Tier 1).
+    pub admission: Arc<admission::Admission>,
     /// 🌑 Skuggi tenant config cache. `None` when MARIADB_URL is unset
     /// (dev/test mode); proxy falls back to env-var SKUGGI_MODE.
     pub tenant_cfg: Option<Arc<tenant_config::TenantConfigCache>>,
@@ -92,6 +95,12 @@ async fn main() {
 
     let active_model = Arc::new(std::sync::RwLock::new(config.llm_model.clone()));
     let swap_lock = Arc::new(tokio::sync::Mutex::new(()));
+
+    // Tier 1: bounded FIFO admission control for the local backend. Sheds
+    // excess concurrency as OpenAI-shaped 429/503 instead of letting requests
+    // pile onto the single-process MLX/llama.cpp backend past its batch ceiling.
+    let admission = Arc::new(admission::Admission::from_env());
+    tracing::info!("🚦 Admission control: {}", admission.describe());
 
     // 🌑 Skuggi rule set. Loaded eagerly so the active detector count is
     // logged at boot and a bad `SKUGGI_RULES_PATH` surfaces here rather than
@@ -159,6 +168,7 @@ async fn main() {
         http_client,
         active_model,
         swap_lock,
+        admission,
         tenant_cfg,
         jwt_validator,
     };

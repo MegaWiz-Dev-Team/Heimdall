@@ -155,6 +155,7 @@ mod tests {
             http_client: reqwest::Client::new(),
             active_model: Arc::new(std::sync::RwLock::new(String::new())),
             swap_lock: Arc::new(tokio::sync::Mutex::new(())),
+            admission: Arc::new(crate::admission::Admission::from_env()),
             tenant_cfg: None, // tests don't need tenant lookup
             jwt_validator: None, // static-key tests only
         }
