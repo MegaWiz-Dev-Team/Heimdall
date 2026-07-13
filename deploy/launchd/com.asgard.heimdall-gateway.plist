@@ -25,6 +25,8 @@
         <string>8001</string>
         <key>API_KEYS</key>
         <string>{{API_KEYS}}</string>
+        <key>MARIADB_URL</key>
+        <string>{{MARIADB_URL}}</string>
         <key>RUST_LOG</key>
         <string>info</string>
     </dict>
