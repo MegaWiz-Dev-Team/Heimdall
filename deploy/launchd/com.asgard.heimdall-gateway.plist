@@ -2,54 +2,45 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>Label</key>
-    <string>com.asgard.heimdall-gateway</string>
-
-    <key>ProgramArguments</key>
-    <array>
-        <string>{{PROJECT_DIR}}/gateway/target/release/heimdall-gateway</string>
-    </array>
-
-    <key>WorkingDirectory</key>
-    <string>{{PROJECT_DIR}}/gateway</string>
-
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>GATEWAY_PORT</key>
-        <string>8080</string>
-        <key>BACKEND_PORT</key>
-        <string>8081</string>
-        <key>EMBEDDING_HOST</key>
-        <string>127.0.0.1</string>
-        <key>EMBEDDING_PORT</key>
-        <string>8001</string>
-        <key>API_KEYS</key>
-        <string>{{API_KEYS}}</string>
-        <key>MARIADB_URL</key>
-        <string>{{MARIADB_URL}}</string>
-        <key>RUST_LOG</key>
-        <string>info</string>
-    </dict>
-
-    <!-- Auto-restart on crash -->
-    <key>KeepAlive</key>
-    <dict>
-        <key>SuccessfulExit</key>
-        <false/>
-    </dict>
-
-    <!-- Throttle restart: wait 5 seconds before restarting -->
-    <key>ThrottleInterval</key>
-    <integer>5</integer>
-
-    <!-- Start automatically at login -->
-    <key>RunAtLoad</key>
-    <true/>
-
-    <!-- Logging -->
-    <key>StandardOutPath</key>
-    <string>{{PROJECT_DIR}}/logs/gateway-stdout.log</string>
-    <key>StandardErrorPath</key>
-    <string>{{PROJECT_DIR}}/logs/gateway-stderr.log</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>API_KEYS</key>
+		<string>{{API_KEYS}}</string>
+		<key>BACKEND_PORT</key>
+		<string>8081</string>
+		<key>EMBEDDING_HOST</key>
+		<string>127.0.0.1</string>
+		<key>EMBEDDING_PORT</key>
+		<string>8001</string>
+		<key>GATEWAY_PORT</key>
+		<string>8080</string>
+		<key>MARIADB_URL</key>
+		<string>{{MARIADB_URL}}</string>
+		<key>RUST_LOG</key>
+		<string>info</string>
+		<key>SKUGGI_LOCAL_ONLY_TENANTS</key>
+		<string>{{SKUGGI_LOCAL_ONLY_TENANTS}}</string>
+	</dict>
+	<key>KeepAlive</key>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
+	<key>Label</key>
+	<string>com.asgard.heimdall-gateway</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>{{PROJECT_DIR}}/gateway/target/release/heimdall-gateway</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StandardErrorPath</key>
+	<string>{{PROJECT_DIR}}/logs/gateway-stderr.log</string>
+	<key>StandardOutPath</key>
+	<string>{{PROJECT_DIR}}/logs/gateway-stdout.log</string>
+	<key>ThrottleInterval</key>
+	<integer>5</integer>
+	<key>WorkingDirectory</key>
+	<string>{{PROJECT_DIR}}/gateway</string>
 </dict>
 </plist>

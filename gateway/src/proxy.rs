@@ -359,6 +359,26 @@ async fn handle_local_vlm_proxy(
     .await
 }
 
+/// True if `tenant_id` appears in the comma-separated `list`. Pure helper so
+/// the matching logic is unit-testable without touching process env.
+fn local_only_list_contains(list: &str, tenant_id: &str) -> bool {
+    list.split(',')
+        .map(str::trim)
+        .any(|t| !t.is_empty() && t == tenant_id)
+}
+
+/// Fail-CLOSED backstop for the local-only egress gate: true if `tenant_id` is
+/// named in the `SKUGGI_LOCAL_ONLY_TENANTS` env var (comma-separated). Unlike
+/// the DB-driven `pii_mode`, this holds even when MariaDB is unreachable — so a
+/// DB outage / missing row / flaky cluster DNS cannot silently re-enable cloud
+/// egress for a no-cloud tenant (e.g. asgard_medical).
+fn tenant_in_local_only_allowlist(tenant_id: &str) -> bool {
+    std::env::var("SKUGGI_LOCAL_ONLY_TENANTS")
+        .ok()
+        .map(|list| local_only_list_contains(&list, tenant_id))
+        .unwrap_or(false)
+}
+
 /// Forward request to an external provider (OpenRouter, Gemini, OpenAI).
 async fn handle_external_proxy(
     state: AppState,
@@ -407,6 +427,17 @@ async fn handle_external_proxy(
             Ok(s) => PiiMode::from_db(s),
             Err(_) => PiiMode::MaskAndSend, // safe default
         }
+    };
+
+    // ── Fail-CLOSED backstop ────────────────────────────────────────────
+    // The resolution above can degrade a local-only tenant to mask-and-send
+    // when the DB is unreachable (tenant_cfg=None → SKUGGI_MODE fallback) or a
+    // row is missing — silently ALLOWING cloud egress. For tenants named in
+    // `SKUGGI_LOCAL_ONLY_TENANTS`, force LocalOnly regardless: the categorical
+    // no-cloud guarantee must not depend on DB availability.
+    let pii_mode = match tenant_id.as_deref() {
+        Some(tid) if tenant_in_local_only_allowlist(tid) => PiiMode::LocalOnly,
+        _ => pii_mode,
     };
 
     let skuggi_started = std::time::Instant::now();
@@ -829,4 +860,26 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         // OpenAI-compatible endpoints
         .route("/v1/{*path}", any(proxy_handler))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::local_only_list_contains;
+
+    #[test]
+    fn local_only_allowlist_matching() {
+        assert!(local_only_list_contains("asgard_medical", "asgard_medical"));
+        assert!(local_only_list_contains(
+            "asgard_medical,asgard_surgical",
+            "asgard_surgical"
+        ));
+        // whitespace around entries is tolerated
+        assert!(local_only_list_contains(" asgard_medical , asgard_vor ", "asgard_vor"));
+        // non-members and empties do not match
+        assert!(!local_only_list_contains("asgard_medical", "asgard_vor"));
+        assert!(!local_only_list_contains("", "asgard_medical"));
+        assert!(!local_only_list_contains(",, ,", "asgard_medical"));
+        // exact match only — no substring / prefix leakage
+        assert!(!local_only_list_contains("asgard_medical_x", "asgard_medical"));
+    }
 }
