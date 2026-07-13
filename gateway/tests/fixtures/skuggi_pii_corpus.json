@@ -46,5 +46,10 @@
   {"kind":"neg-hard","ctx":"ผู้ป่วยชายอายุ 65 ปี BMI 33 นอนกรนดังหยุดหายใจ","pii":{}},
   {"kind":"neg-hard","ctx":"ตรวจ TSH 8.5 free T4 0.7 วินิจฉัย hypothyroidism","pii":{}},
   {"kind":"neg-hard","ctx":"ferritin 5 ng/mL RDW สูง สงสัย iron deficiency anemia","pii":{}},
-  {"kind":"neg-hard","ctx":"CURB-65 score 2 พิจารณา admit รักษาปอดอักเสบ","pii":{}}
+  {"kind":"neg-hard","ctx":"CURB-65 score 2 พิจารณา admit รักษาปอดอักเสบ","pii":{}},
+  {"kind":"neg-thai-trap","ctx":"เด็กชายอายุ 2 ปี มีไข้สูง 39 องศา ร้องกวนงอแง","pii":{}},
+  {"kind":"neg-thai-trap","ctx":"เด็กหญิงมีผื่นแดงคันตามตัวหลังกินยาปฏิชีวนะ","pii":{}},
+  {"kind":"neg-thai-trap","ctx":"ปรึกษานายแพทย์เวรและนางพยาบาลหัวหน้าเวรดึก","pii":{}},
+  {"kind":"neg-thai-trap","ctx":"ประเมินคุณภาพการดูแลผู้ป่วยในหอผู้ป่วยใน","pii":{}},
+  {"kind":"neg-thai-trap","ctx":"เวชระเบียนผู้ป่วยนอกจัดเก็บครบถ้วนแล้ว","pii":{}}
 ]
