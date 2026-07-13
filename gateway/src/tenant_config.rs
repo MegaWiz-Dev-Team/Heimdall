@@ -37,6 +37,13 @@ pub enum PiiMode {
     MaskAndSend,
     /// Detect — if any PII found, fail the call. Strict-PHI hospitals.
     BlockOnPii,
+    /// Categorical no-cloud-egress. ANY external-provider route is rejected
+    /// fail-closed (403) BEFORE the payload is inspected — independent of
+    /// whether PII is detected. This is the strongest posture and the one
+    /// the `asgard_medical` (Eir) tenant runs: patient data must never leave
+    /// the box, so we don't rely on the PII detector catching everything.
+    /// Local models are unaffected (this gate only fires on external routes).
+    LocalOnly,
 }
 
 impl PiiMode {
@@ -48,6 +55,7 @@ impl PiiMode {
             "detect-only" | "detect_only" | "detectonly" => PiiMode::DetectOnly,
             "mask-and-send" | "mask_and_send" | "maskandsend" => PiiMode::MaskAndSend,
             "block-on-pii" | "block_on_pii" | "blockonpii" => PiiMode::BlockOnPii,
+            "local-only" | "local_only" | "localonly" => PiiMode::LocalOnly,
             _ => {
                 tracing::warn!("Unknown pii_mode '{}', defaulting to mask-and-send", s);
                 PiiMode::MaskAndSend
@@ -62,6 +70,7 @@ impl PiiMode {
             PiiMode::DetectOnly => "detect-only",
             PiiMode::MaskAndSend => "mask-and-send",
             PiiMode::BlockOnPii => "block-on-pii",
+            PiiMode::LocalOnly => "local-only",
         }
     }
 }
@@ -278,6 +287,7 @@ mod tests {
         assert_eq!(PiiMode::from_db("detect-only"), PiiMode::DetectOnly);
         assert_eq!(PiiMode::from_db("mask-and-send"), PiiMode::MaskAndSend);
         assert_eq!(PiiMode::from_db("block-on-pii"), PiiMode::BlockOnPii);
+        assert_eq!(PiiMode::from_db("local-only"), PiiMode::LocalOnly);
     }
 
     #[test]
@@ -285,6 +295,8 @@ mod tests {
         // Some legacy rows may use underscores; accept both.
         assert_eq!(PiiMode::from_db("mask_and_send"), PiiMode::MaskAndSend);
         assert_eq!(PiiMode::from_db("block_on_pii"), PiiMode::BlockOnPii);
+        assert_eq!(PiiMode::from_db("local_only"), PiiMode::LocalOnly);
+        assert_eq!(PiiMode::from_db("localonly"), PiiMode::LocalOnly);
     }
 
     #[test]
@@ -296,7 +308,7 @@ mod tests {
 
     #[test]
     fn db_str_round_trip() {
-        for &m in &[PiiMode::Off, PiiMode::DetectOnly, PiiMode::MaskAndSend, PiiMode::BlockOnPii] {
+        for &m in &[PiiMode::Off, PiiMode::DetectOnly, PiiMode::MaskAndSend, PiiMode::BlockOnPii, PiiMode::LocalOnly] {
             assert_eq!(PiiMode::from_db(m.as_db_str()), m);
         }
     }

@@ -411,6 +411,53 @@ async fn handle_external_proxy(
 
     let skuggi_started = std::time::Instant::now();
 
+    // ── LocalOnly egress gate (fail-closed) ─────────────────────────────
+    // Categorical no-cloud policy (e.g. asgard_medical / Eir): reject ANY
+    // external route BEFORE inspecting the payload. Unlike block-on-pii this
+    // does NOT depend on the PII detector firing — patient data must never
+    // leave the box even if Skuggi would have missed the PII. Local routes
+    // never reach here, so this only blocks cloud egress.
+    if pii_mode == PiiMode::LocalOnly {
+        tracing::warn!(
+            "🌑 skuggi[local-only] EGRESS BLOCKED tenant={:?} provider={} model={} — external routing forbidden for this tenant",
+            tenant_id, provider, model
+        );
+        metrics::counter!("skuggi_egress_blocked_total").increment(1);
+        if let (Some(cache), Some(tid)) = (state.tenant_cfg.as_ref(), tenant_id.as_ref()) {
+            let pool = cache.pool().clone();
+            let evt = AuditEvent {
+                tenant_id: tid.clone(),
+                request_id: request_id.clone(),
+                provider: provider.to_string(),
+                model: model.to_string(),
+                mode: pii_mode,
+                detections: Vec::new(),
+                pii_total_count: 0,
+                blocked: true,
+                payload_bytes: body_bytes.len(),
+                redacted_bytes: 0, // payload never sent
+                duration: skuggi_started.elapsed(),
+                detection_tier: "egress-gate",
+            };
+            tokio::spawn(async move { insert_audit(&pool, evt).await });
+        }
+        return Ok(Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::json!({"error": {
+                    "message": format!(
+                        "External provider '{}' is forbidden for this tenant (local-only policy). Use a local model.",
+                        provider
+                    ),
+                    "type": "egress_blocked",
+                    "code": "local_only"
+                }})
+                .to_string(),
+            ))
+            .unwrap());
+    }
+
     // First parse + run redaction; we may need the detection list before
     // deciding whether to send the redacted body, the original body, or
     // reject with 422.
@@ -421,6 +468,8 @@ async fn handle_external_proxy(
         }
 
         match pii_mode {
+            // Blocked by the fail-closed egress gate above; never reaches here.
+            PiiMode::LocalOnly => unreachable!("LocalOnly egress is blocked before redaction"),
             PiiMode::Off => {
                 let body_bytes_out = serde_json::to_vec(&json).unwrap_or_else(|_| body_bytes.to_vec());
                 (body_bytes_out, Vec::new(), 0usize)
