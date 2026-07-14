@@ -1,0 +1,87 @@
+{
+  "_comment": "OpenSearch Alerting monitors for the shipper→indexer path (A). Import each object via POST _plugins/_alerting/monitors on the Wazuh Indexer (:30920). Add your own notification channel to `actions` (empty = alert visible in Alerting UI only). Fields (event_category, security_severity, skuggi_*, wazuh_level) are added by scripts/log_shipper.py::classify_skuggi.",
+
+  "monitors": [
+    {
+      "type": "monitor",
+      "name": "skuggi-high-severity-dlp",
+      "monitor_type": "query_level_monitor",
+      "enabled": true,
+      "schedule": { "period": { "interval": 1, "unit": "MINUTES" } },
+      "inputs": [
+        {
+          "search": {
+            "indices": ["heimdall-logs-*"],
+            "query": {
+              "size": 0,
+              "query": {
+                "bool": {
+                  "filter": [
+                    { "term": { "event_category.keyword": "skuggi_dlp" } },
+                    { "range": { "wazuh_level": { "gte": 9 } } },
+                    { "range": { "@timestamp": { "gte": "now-5m" } } }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "triggers": [
+        {
+          "query_level_trigger": {
+            "name": "unredacted-PII-or-fail-open",
+            "severity": "1",
+            "condition": { "script": { "lang": "painless", "source": "ctx.results[0].hits.total.value > 0" } },
+            "actions": []
+          }
+        }
+      ]
+    },
+
+    {
+      "type": "monitor",
+      "name": "skuggi-local-only-egress-spike",
+      "monitor_type": "query_level_monitor",
+      "enabled": true,
+      "schedule": { "period": { "interval": 5, "unit": "MINUTES" } },
+      "inputs": [
+        {
+          "search": {
+            "indices": ["heimdall-logs-*"],
+            "query": {
+              "size": 0,
+              "query": {
+                "bool": {
+                  "filter": [
+                    { "term": { "skuggi_mode.keyword": "local-only" } },
+                    { "term": { "skuggi_decision.keyword": "blocked" } },
+                    { "range": { "@timestamp": { "gte": "now-5m" } } }
+                  ]
+                }
+              },
+              "aggregations": {
+                "by_tenant": { "terms": { "field": "skuggi_tenant.keyword", "size": 20 } }
+              }
+            }
+          }
+        }
+      ],
+      "triggers": [
+        {
+          "query_level_trigger": {
+            "name": "egress-attempt-spike-per-tenant",
+            "severity": "2",
+            "condition": {
+              "script": {
+                "lang": "painless",
+                "source": "for (b in ctx.results[0].aggregations.by_tenant.buckets) { if (b.doc_count > 10) { return true; } } return false;"
+              }
+            },
+            "actions": []
+          }
+        }
+      ]
+    }
+  ]
+}

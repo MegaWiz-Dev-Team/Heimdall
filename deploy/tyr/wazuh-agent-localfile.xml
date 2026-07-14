@@ -1,0 +1,27 @@
+<!--
+  Skuggi localfile for the Wazuh AGENT (Path B). Append inside <ossec_config>
+  in the agent's /var/ossec/etc/ossec.conf, then restart the agent.
+
+  The agent runs in the `wazuh-agent` container, so it must be able to SEE the
+  Heimdall log. Mount the host logs dir into the container, e.g.:
+      docker run … -v /Users/mimir/Developer/Heimdall/logs:/heimdall-logs:ro …
+  and point <location> at the mounted path below.
+
+  Prereq: Heimdall logs with ANSI disabled so the manager decoders match.
+-->
+<localfile>
+  <log_format>syslog</log_format>
+  <location>/heimdall-logs/gateway-stdout.log</location>
+  <!-- Only forward Skuggi lines to the manager (keeps noise + EPS down). -->
+  <label key="source">heimdall-skuggi</label>
+</localfile>
+
+<!--
+  RECOMMENDED future form: a dedicated JSON audit log (logs/skuggi-audit.log)
+  emitted by Heimdall → then use log_format=json (no decoder needed, no drift):
+
+  <localfile>
+    <log_format>json</log_format>
+    <location>/heimdall-logs/skuggi-audit.log</location>
+  </localfile>
+-->

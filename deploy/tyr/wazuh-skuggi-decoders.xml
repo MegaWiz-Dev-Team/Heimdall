@@ -1,0 +1,23 @@
+<!--
+  Skuggi DLP decoders for the Wazuh MANAGER (Path B: agent → manager).
+  Install: append to /var/ossec/etc/decoders/local_decoder.xml on the manager,
+  then `wazuh-control restart`.
+  ⚠️ DRAFT — validate against a real line with `/var/ossec/bin/wazuh-logtest`
+     before relying on it (Tyr was scaled to 0 when authored; untested live).
+  Prereq: Heimdall logs with ANSI disabled (fmt::layer().with_ansi(false)).
+-->
+<decoder name="heimdall-skuggi">
+  <prematch type="pcre2">skuggi\[</prematch>
+</decoder>
+
+<decoder name="heimdall-skuggi-fields">
+  <parent>heimdall-skuggi</parent>
+  <regex type="pcre2">skuggi\[([\w-]+)\]\s*(EGRESS BLOCKED|BLOCKED)?.*?tenant=(?:Some\("([^"]*)"\)|(None|[\w-]+))</regex>
+  <order>skuggi_mode, skuggi_flag, skuggi_tenant, skuggi_tenant</order>
+</decoder>
+
+<decoder name="heimdall-skuggi-detail">
+  <parent>heimdall-skuggi</parent>
+  <regex type="pcre2">provider=(\S+)\s+model=(\S+)(?:.*?detections=(\S+))?</regex>
+  <order>skuggi_provider, skuggi_model, skuggi_detections</order>
+</decoder>

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import re
 import time
 import json
 import subprocess
@@ -61,6 +62,69 @@ def send_bulk(logs):
     except urllib.error.URLError as e:
         print(f"Failed to send logs: {e}", flush=True)
 
+# ── 🌑 Skuggi DLP event classifier (→ Tyr/Wazuh) ──────────────
+# Turns Heimdall's `🌑 skuggi[...]` tracing lines into structured, severity-
+# tagged DLP events so Tyr can alert on egress attempts / unredacted-PII leaks.
+# Severity mirrors the DLP risk of the call (see deploy/tyr/README.md).
+ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+SKUGGI_RE = re.compile(
+    r"skuggi\[(?P<mode>[\w-]+)\]\s*(?P<evt>EGRESS BLOCKED|BLOCKED)?"
+    r'.*?tenant=(?:Some\("(?P<tenant>[^"]*)"\)|(?P<tenant2>None|[\w-]+))'
+    r"(?:.*?provider=(?P<provider>\S+))?"
+    r"(?:.*?model=(?P<model>\S+))?"
+    r"(?:.*?detections=(?P<det>\S+))?"
+)
+
+def classify_skuggi(msg):
+    """Return extra structured fields for a Skuggi log line, or None."""
+    msg = ANSI_RE.sub("", msg)
+    if "skuggi[" not in msg:
+        if "tenant config cache connected to MariaDB" in msg:
+            return {"event_category": "skuggi_dlp", "skuggi_event": "db_connected",
+                    "security_severity": "info", "wazuh_level": 2}
+        low = msg.lower()
+        if "skuggi" in low and any(k in low for k in ("fail", "error", "fall")):
+            return {"event_category": "skuggi_dlp", "skuggi_event": "error_or_fallback",
+                    "security_severity": "high", "wazuh_level": 9,
+                    "skuggi_note": "policy DB/tier issue → fail-open risk"}
+        return None
+    m = SKUGGI_RE.search(msg)
+    if not m:
+        return {"event_category": "skuggi_dlp", "skuggi_event": "unparsed",
+                "security_severity": "low", "wazuh_level": 3}
+    mode = m.group("mode")
+    blocked = bool(m.group("evt"))
+    tenant = m.group("tenant") or m.group("tenant2") or "unknown"
+    det = m.group("det")
+    has_pii = bool(det) and det not in ("", "none")
+
+    if mode == "local-only":
+        sev, lvl, why = "notice", 6, "no-cloud tenant attempted external egress (blocked)"
+    elif mode == "block-on-pii" and blocked:
+        sev, lvl, why = "notice", 7, "PII detected on strict tenant → call rejected"
+    elif mode == "detect-only" and has_pii:
+        sev, lvl, why = "high", 10, "PII forwarded UNREDACTED to cloud (detect-only)"
+    elif mode == "off":
+        sev, lvl, why = "high", 10, "redaction disabled — raw payload to cloud"
+    elif mode == "mask-and-send":
+        sev, lvl, why = ("low", 3, "PII redacted then forwarded") if has_pii else ("info", 2, "clean call forwarded")
+    else:
+        sev, lvl, why = "low", 3, "skuggi event"
+
+    return {
+        "event_category": "skuggi_dlp",
+        "skuggi_mode": mode,
+        "skuggi_decision": "blocked" if blocked else "forwarded",
+        "skuggi_tenant": tenant,
+        "skuggi_provider": m.group("provider"),
+        "skuggi_model": m.group("model"),
+        "skuggi_detections": det,
+        "security_severity": sev,
+        "wazuh_level": lvl,
+        "skuggi_why": why,
+    }
+
+
 def parse_log_line(service, line):
     line = line.strip()
     if not line: return None
@@ -83,13 +147,18 @@ def parse_log_line(service, line):
     elif "DEBUG" in upper_msg:
         level = "DEBUG"
         
-    return {
+    doc = {
         "@timestamp": timestamp,
         "service": service,
         "level": level,
         "message": message,
         "host": "macos-host"
     }
+    # Enrich Skuggi DLP events with structured fields + severity for Tyr.
+    skuggi = classify_skuggi(message)
+    if skuggi:
+        doc.update(skuggi)
+    return doc
 
 def main():
     print(f"🚀 Started Heimdall -> Wazuh/Tyr Log Shipper", flush=True)

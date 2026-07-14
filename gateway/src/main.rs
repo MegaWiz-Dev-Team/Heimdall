@@ -72,7 +72,9 @@ async fn main() {
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| "heimdall_gateway=info,tower_http=info".into()),
         )
-        .with(tracing_subscriber::fmt::layer())
+        // ANSI off: log files (StandardOutPath) shouldn't carry color escapes —
+        // keeps them clean for the Tyr/Wazuh log pipeline (deploy/tyr/).
+        .with(tracing_subscriber::fmt::layer().with_ansi(false))
         .with(telemetry_layer)
         .init();
 

@@ -1,0 +1,64 @@
+<!--
+  Skuggi DLP rules for the Wazuh MANAGER (Path B). Install: append to
+  /var/ossec/etc/rules/local_rules.xml, then `wazuh-control restart`.
+  Rule IDs 100600–100699 (local range). Levels mirror deploy/tyr/README.md.
+-->
+<group name="skuggi,dlp,">
+
+  <rule id="100600" level="2">
+    <decoded_as>heimdall-skuggi</decoded_as>
+    <description>Skuggi DLP: $(skuggi_mode) tenant=$(skuggi_tenant)</description>
+  </rule>
+
+  <!-- HIGH: PII left the box unmasked -->
+  <rule id="100611" level="10">
+    <if_sid>100600</if_sid>
+    <field name="skuggi_mode">detect-only|off</field>
+    <field name="skuggi_detections">\.+</field>
+    <description>Skuggi: PII forwarded UNREDACTED to cloud — tenant=$(skuggi_tenant) provider=$(skuggi_provider)</description>
+    <group>dlp,pii_leak,pci_dss_10.6.1,</group>
+  </rule>
+
+  <!-- HIGH: policy engine degraded → fail-open risk -->
+  <rule id="100615" level="9">
+    <if_sid>100600</if_sid>
+    <match type="pcre2">tenant config|falling back|connect|error|fail</match>
+    <description>Skuggi: policy DB/tier failure — fail-open risk</description>
+    <group>dlp,availability,</group>
+  </rule>
+
+  <!-- NOTICE: strict tenant rejected a PII call -->
+  <rule id="100612" level="7">
+    <if_sid>100600</if_sid>
+    <field name="skuggi_mode">block-on-pii</field>
+    <field name="skuggi_flag">BLOCKED</field>
+    <description>Skuggi: PII detected on strict tenant → call rejected ($(skuggi_tenant))</description>
+    <group>dlp,pii_blocked,</group>
+  </rule>
+
+  <!-- NOTICE: no-cloud tenant tried to egress -->
+  <rule id="100610" level="6">
+    <if_sid>100600</if_sid>
+    <field name="skuggi_mode">local-only</field>
+    <description>Skuggi: no-cloud tenant attempted external egress (blocked) — $(skuggi_tenant) → $(skuggi_provider)</description>
+    <group>dlp,egress_blocked,</group>
+  </rule>
+
+  <!-- CORRELATION: repeated egress attempts = mis-config / probing -->
+  <rule id="100620" level="12" frequency="10" timeframe="300">
+    <if_matched_sid>100610</if_matched_sid>
+    <same_field>skuggi_tenant</same_field>
+    <description>Skuggi: local-only egress-attempt SPIKE (>10/5m) — probable mis-config or probing ($(skuggi_tenant))</description>
+    <group>dlp,correlation,attack,</group>
+  </rule>
+
+  <!-- LOW: normal redacted forward (telemetry; usually below alert threshold) -->
+  <rule id="100601" level="3">
+    <if_sid>100600</if_sid>
+    <field name="skuggi_mode">mask-and-send</field>
+    <field name="skuggi_detections">\.+</field>
+    <description>Skuggi: PII redacted then forwarded — $(skuggi_tenant)</description>
+    <group>dlp,pii_masked,</group>
+  </rule>
+
+</group>
