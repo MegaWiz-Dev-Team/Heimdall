@@ -16,6 +16,8 @@
 		<string>8080</string>
 		<key>MARIADB_URL</key>
 		<string>{{MARIADB_URL}}</string>
+		<key>PYTHAINLP_URL</key>
+		<string>{{PYTHAINLP_URL}}</string>
 		<key>RUST_LOG</key>
 		<string>info</string>
 		<key>SKUGGI_LOCAL_ONLY_TENANTS</key>

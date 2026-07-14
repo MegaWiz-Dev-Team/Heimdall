@@ -54,6 +54,7 @@ sed -e "s|{{PROJECT_DIR}}|$PROJECT_DIR|g" \
     -e "s|{{API_KEYS}}|${API_KEYS:-}|g" \
     -e "s|{{MARIADB_URL}}|${MARIADB_URL:-}|g" \
     -e "s|{{SKUGGI_LOCAL_ONLY_TENANTS}}|${SKUGGI_LOCAL_ONLY_TENANTS:-}|g" \
+    -e "s|{{PYTHAINLP_URL}}|${PYTHAINLP_URL:-}|g" \
     -e "s|{{GEMINI_API_KEY}}|${GEMINI_API_KEY:-}|g" \
     -e "s|{{OPENROUTER_API_KEY}}|${OPENROUTER_API_KEY:-}|g" \
     -e "s|{{OPENAI_API_KEY}}|${OPENAI_API_KEY:-}|g" \
