@@ -65,6 +65,7 @@ chmod 600 "$LAUNCHD_DIR/com.asgard.heimdall-gateway.plist"
 # ── Install MLX Backend Service ──────────────────────────────
 echo "📦 Installing MLX LLM Backend (:8081)..."
 sed -e "s|{{PROJECT_DIR}}|$PROJECT_DIR|g" \
+    -e "s|{{HOME}}|$HOME|g" \
     "$PROJECT_DIR/deploy/launchd/com.asgard.heimdall-mlx.plist" \
     > "$LAUNCHD_DIR/com.asgard.heimdall-mlx.plist"
 
