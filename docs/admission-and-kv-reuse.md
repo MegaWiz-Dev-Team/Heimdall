@@ -57,7 +57,7 @@ Reproduce: `scripts/bench/loadtest.py` (see `scripts/bench/*.json` for raw runs)
 
 ---
 
-## Tier 2 — KV / prompt-prefix reuse  📋 measured, implementation deferred
+## Tier 2 — KV / prompt-prefix reuse  ✅ implemented as backend flags (2026-10-03)
 
 **The win is real and large.** Re-using the KV of a shared system prompt
 (2307 tokens) instead of re-prefilling it:
@@ -93,3 +93,30 @@ gemma slot is ~15 GB, so a 64 GB box holds ~2–3 slots. Options when picked up:
    traffic to keep one conversation warm.
 
 Reproduce the win + capacity probe: `scripts/bench/prefix_probe.py`.
+
+### 2026-10-03 — root cause and fix (supersedes the "~1–2 prefixes" finding above)
+
+The small cache was a default, not a design limit. `mlx_lm.server` 0.31.3 already
+checkpoints the KV at the end of the system prompt, but each request stores up to three
+caches (system, user, assistant) against `--prompt-cache-size` **10**, and eviction keeps the
+three types balanced. The live production cache read `10 sequences = system 3 / user 3 /
+assistant 4` (2.08 GB), so a rotation of more than three tenants evicted each other. The
+cache also had no byte bound.
+
+Fix, no code: `--prompt-cache-size 64 --prompt-cache-bytes 4GB` in the
+`com.asgard.heimdall-mlx` plist. Measured on production `:8081` right after the restart
+(LLM down ~15 s), 2,380–2,388-token system prompts, sequential, two passes:
+
+| tenants in rotation | pass-2 hit | pass-2 TTFT (cold ≈ 4.3 s) |
+|---|---|---|
+| 2 (interleaved A/B) | all | 0.41–0.45 s |
+| 4 | 4/4 | 0.43 s |
+| 6 | 6/6 | 0.43 s |
+| 8 | 0/8 | — (over capacity: LRU on a cycle longer than the cache misses every time) |
+
+Each tenant costs about 0.85 GB at this prompt length (system 0.32 + user 0.26 + assistant
+0.26), so 4 GB holds ~6 long-prompt tenants; shorter prompts fit proportionally more. Raising
+`--prompt-cache-bytes` buys more tenants at that rate; the box was ~32/34 GB into swap on
+the day, which is why it stayed at 4 GB. Multi-instance / llama.cpp slots (options 1–2) are no
+longer needed. Watch the `Prompt Cache:` lines in `logs/mlx-stderr.log` for hit capacity in
+real traffic.

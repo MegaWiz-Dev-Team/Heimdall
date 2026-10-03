@@ -10,10 +10,22 @@
         <string>{{PROJECT_DIR}}/.venv/bin/python</string>
         <string>-m</string>
         <string>mlx_lm.server</string>
+        <!-- cwd-relative symlink to the pinned HF snapshot of
+             mlx-community/gemma-4-26b-a4b-it-4bit; a missing link makes
+             mlx_lm treat the name as a repo id and generation hangs -->
         <string>--model</string>
-        <string>mlx-community/gemma-4-26b-a4b-it-4bit</string>
+        <string>gemma-4-26b</string>
         <string>--port</string>
         <string>8081</string>
+        <!-- Cross-tenant system-prompt KV reuse (docs/admission-and-kv-reuse.md,
+             Tier 2). Each request stores up to 3 caches (system, user,
+             assistant); the default cap of 10 left ~3 system prefixes, so a
+             rotation of tenants evicted each other and never hit. The byte cap
+             bounds the cache, which is unbounded by default. -->
+        <string>--prompt-cache-size</string>
+        <string>64</string>
+        <string>--prompt-cache-bytes</string>
+        <string>4GB</string>
     </array>
 
     <key>WorkingDirectory</key>
