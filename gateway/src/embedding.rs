@@ -1,8 +1,9 @@
 /// Native Rust Embedding & Reranking Engine for Heimdall.
 ///
-/// Uses `fastembed` (ONNX Runtime + CoreML on Apple Silicon) to provide
+/// Uses `fastembed` (ONNX Runtime, CPU execution provider) to provide
 /// OpenAI-compatible `/v1/embeddings` and `/v1/rerank` endpoints without
-/// requiring a Python sidecar.
+/// requiring a Python sidecar. The CoreML/Neural Engine EP was measured and
+/// rejected — see docs/encoder-ane-evaluation.md.
 
 use axum::{
     extract::State,

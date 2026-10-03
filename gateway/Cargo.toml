@@ -42,7 +42,7 @@ futures = "0.3"
 bytes = "1"
 sysinfo = "0.38.4"
 
-# Native Embedding Engine (ONNX Runtime + CoreML on Apple Silicon)
+# Native Embedding Engine (ONNX Runtime, CPU EP — CoreML EP rejected, docs/encoder-ane-evaluation.md)
 fastembed = "5.13"
 
 # 🌑 Skuggi PII Guardrail (Sprint 50b) — see ADR-007.
